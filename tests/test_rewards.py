@@ -1,6 +1,12 @@
 """Tests for the decomposable reward function."""
 
-from models import ActionType, ConclusionClaim, ExperimentAction, IntermediateOutput, OutputType
+from models import (
+    ActionType,
+    ConclusionClaim,
+    ExperimentAction,
+    IntermediateOutput,
+    OutputType,
+)
 from server.rewards.reward import RewardComputer
 from server.simulator.latent_state import (
     ExperimentProgress,
@@ -43,7 +49,11 @@ class TestStepReward:
         )
         rb = rc.step_reward(
             ExperimentAction(action_type=ActionType.SEQUENCE_CELLS),
-            prev, nxt, output, [], [],
+            prev,
+            nxt,
+            output,
+            [],
+            [],
         )
         assert rb.total > 0
 
@@ -57,7 +67,11 @@ class TestStepReward:
         )
         rb = rc.step_reward(
             ExperimentAction(action_type=ActionType.SEQUENCE_CELLS),
-            prev, nxt, output, ["blocked"], [],
+            prev,
+            nxt,
+            output,
+            ["blocked"],
+            [],
         )
         assert rb.total < 0
 
@@ -94,9 +108,12 @@ class TestTerminalReward:
                 true_markers=["NPPA"],
             ),
             progress=ExperimentProgress(
-                samples_collected=True, cells_sequenced=True,
-                qc_performed=True, data_filtered=True,
-                data_normalized=True, de_performed=True,
+                samples_collected=True,
+                cells_sequenced=True,
+                qc_performed=True,
+                data_filtered=True,
+                data_normalized=True,
+                de_performed=True,
                 conclusion_reached=True,
             ),
             resources=ResourceState(budget_total=100_000, budget_used=40_000),
@@ -168,8 +185,14 @@ class TestTerminalReward:
             candidate_mechanisms=["unrelated inflammatory process"],
         )
 
-        assert aligned.components["discovery_alignment"] > misaligned.components["discovery_alignment"]
-        assert aligned.components["discovery_error_penalty"] > misaligned.components["discovery_error_penalty"]
+        assert (
+            aligned.components["discovery_alignment"]
+            > misaligned.components["discovery_alignment"]
+        )
+        assert (
+            aligned.components["discovery_error_penalty"]
+            > misaligned.components["discovery_error_penalty"]
+        )
         assert aligned.terminal > misaligned.terminal
 
     def test_conclusion_error_penalizes_wrong_structured_claims(self):
@@ -211,6 +234,12 @@ class TestTerminalReward:
             [],
         )
 
-        assert aligned.components["conclusion_alignment"] > misaligned.components["conclusion_alignment"]
-        assert aligned.components["conclusion_error_penalty"] > misaligned.components["conclusion_error_penalty"]
+        assert (
+            aligned.components["conclusion_alignment"]
+            > misaligned.components["conclusion_alignment"]
+        )
+        assert (
+            aligned.components["conclusion_error_penalty"]
+            > misaligned.components["conclusion_error_penalty"]
+        )
         assert aligned.terminal > misaligned.terminal
