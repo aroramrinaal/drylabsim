@@ -21,13 +21,13 @@ _REQUIRES = {
         ("library_prepared", "Cannot sequence without library preparation"),
     ],
     ActionType.RUN_QC: [
-        ("qc_performed", "Cannot run QC before sequencing"),
+        ("cells_sequenced", "Cannot run QC before sequencing"),
     ],
     ActionType.FILTER_DATA: [
-        ("data_filtered", "Cannot filter data before QC"),
+        ("qc_performed", "Cannot filter data before QC"),
     ],
     ActionType.NORMALIZE_DATA: [
-        ("data_normalized", "Cannot normalise before filtering"),
+        ("data_filtered", "Cannot normalise before filtering"),
     ],
     ActionType.INTEGRATE_BATCHES: [
         ("data_normalized", "Cannot integrate batches before normalisation"),
