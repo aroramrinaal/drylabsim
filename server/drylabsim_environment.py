@@ -138,26 +138,36 @@ class BioExperimentEnvironment(Environment):
         self._latent = result.next_state
 
         step_rb = self._rewards.step_reward(
-            action, prev_state, self._latent, result.output, hard_v, soft_v,
+            action,
+            prev_state,
+            self._latent,
+            result.output,
+            hard_v,
+            soft_v,
         )
 
         cost_budget, cost_time = compute_action_cost(action)
-        self._history.append(PipelineStepRecord(
-            step_index=self._state.step_count,
-            action_type=action.action_type,
-            method=action.method,
-            parameters=action.parameters,
-            output_summary=result.output.summary,
-            output_type=result.output.output_type,
-            success=result.output.success,
-            quality_score=result.output.quality_score,
-            resource_cost=cost_budget,
-            time_cost_days=cost_time,
-        ))
+        self._history.append(
+            PipelineStepRecord(
+                step_index=self._state.step_count,
+                action_type=action.action_type,
+                method=action.method,
+                parameters=action.parameters,
+                output_summary=result.output.summary,
+                output_type=result.output.output_type,
+                success=result.output.success,
+                quality_score=result.output.quality_score,
+                resource_cost=cost_budget,
+                time_cost_days=cost_time,
+            )
+        )
         self._outputs.append(result.output)
         self._update_discoveries(action, result.output)
 
-        if action.action_type == ActionType.SYNTHESIZE_CONCLUSION and result.output.success:
+        if (
+            action.action_type == ActionType.SYNTHESIZE_CONCLUSION
+            and result.output.success
+        ):
             raw_claims = action.parameters.get("claims", [])
             for c in raw_claims:
                 if isinstance(c, dict):
