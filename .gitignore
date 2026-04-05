@@ -1,0 +1,45 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+
+# Coverage and test output
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# Build and packaging artifacts
+build/
+dist/
+site/
+*.egg-info/
+drylabsim.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+
+# Environment and local config
+.env
+.env.*
+.python-version
+
+# UV
+.uv/

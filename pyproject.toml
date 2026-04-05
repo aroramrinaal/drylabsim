@@ -1,0 +1,69 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drylabsim"
+version = "0.1.0"
+description = "DryLabSim environment for biological experiment pipeline planning"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "openenv-core[core]>=0.2.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+bio = [
+    "biopython>=1.84",
+    "gseapy>=1.1.3",
+    "scanpy>=1.10.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+train = [
+    "accelerate>=1.13.0",
+    "bitsandbytes>=0.45.0",
+    "datasets>=4.6.1",
+    "ipykernel>=6.0.0",
+    "matplotlib>=3.10.8",
+    "peft>=0.15.0",
+    "torch>=2.10.0",
+    "torchvision>=0.20.0",
+    "transformers>=5.3.0",
+    "trl>=0.29.0",
+]
+
+[project.scripts]
+server = "drylabsim.server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = [
+    "drylabsim",
+    "drylabsim.server",
+    "drylabsim.server.biology",
+    "drylabsim.server.simulator",
+    "drylabsim.server.rules",
+    "drylabsim.server.rewards",
+    "drylabsim.server.tasks",
+    "drylabsim.tests",
+]
+[tool.setuptools.package-dir]
+drylabsim = "."
+"drylabsim.server" = "server"
+"drylabsim.server.biology" = "server/biology"
+"drylabsim.server.simulator" = "server/simulator"
+"drylabsim.server.rules" = "server/rules"
+"drylabsim.server.rewards" = "server/rewards"
+"drylabsim.server.tasks" = "server/tasks"
+"drylabsim.tests" = "tests"
