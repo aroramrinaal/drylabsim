@@ -35,36 +35,6 @@ At a high level, each episode looks like this:
 7. The environment returns a new observation with updated history, outputs, discoveries, violations, and reward.
 8. The episode ends when the agent synthesizes a conclusion, exhausts resources, or reaches the step limit.
 
-## The core mental model
-
-### Hidden state
-
-The simulator keeps a `FullLatentState` that the agent never directly sees. It contains:
-
-- true cell populations and marker genes
-- true DE genes, pathways, trajectories, and regulatory networks
-- technical factors such as dropout, doublets, ambient RNA, and batch effects
-- experiment progress flags
-- remaining budget and time
-- hidden failure conditions
-
-### Visible state
-
-The agent only sees `ExperimentObservation`, which includes:
-
-- the current `TaskSpec`
-- pipeline history
-- available assays and tools
-- resource usage
-- the latest and cumulative intermediate outputs
-- discovered markers and candidate mechanisms
-- rule violations
-- per-step reward breakdown
-
-This separation is what makes the environment a POMDP rather than a fully observed simulator.
-
-
-
 ### `server/tasks/`
 
 This is where episodes come from.
