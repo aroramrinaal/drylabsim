@@ -52,6 +52,7 @@ packages = [
     "drylabsim",
     "drylabsim.server",
     "drylabsim.server.biology",
+    "drylabsim.server.grader",
     "drylabsim.server.simulator",
     "drylabsim.server.rules",
     "drylabsim.server.rewards",
@@ -62,6 +63,7 @@ packages = [
 drylabsim = "."
 "drylabsim.server" = "server"
 "drylabsim.server.biology" = "server/biology"
+"drylabsim.server.grader" = "server/grader"
 "drylabsim.server.simulator" = "server/simulator"
 "drylabsim.server.rules" = "server/rules"
 "drylabsim.server.rewards" = "server/rewards"
