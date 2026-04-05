@@ -71,12 +71,13 @@ The rule engine enforces scientific and procedural constraints before each actio
 - hard violations block the action entirely
 - soft violations allow the action, but reduce output quality and add reward penalties
 
-The four rule families are:
+The five rule families are:
 
 1. **Prerequisites (HARD)** — each computational step requires the appropriate upstream milestone flag. For example: `normalize_data` requires `data_filtered`, `differential_expression` requires `data_normalized`, `validate_marker` requires `markers_discovered`
-2. **Resource constraints (HARD/SOFT)** — budget or time exhausted is a hard block; action cost exceeding remaining budget (when budget > 0) is a soft warning
-3. **Redundancy (SOFT)** — repeating an already-completed step such as `run_qc` or `normalize_data`
-4. **Causal validity (SOFT)** — synthesizing conclusions without prior DE or clustering; making causal claims without validation evidence; pathway enrichment before DE
+2. **Resource constraints (HARD)** — budget or time exhausted, or action cost exceeding remaining budget, all block the action
+3. **Redundancy (HARD)** — repeating an already-completed step such as `run_qc` or `normalize_data` is blocked
+4. **Causal validity (HARD/SOFT)** — synthesizing conclusions without prior DE, clustering, marker, or mechanism evidence is blocked; unsupported causal claims and pathway enrichment before DE are soft warnings
+5. **Tool compatibility (HARD)** — checks that the requested action is compatible with available tools and modalities
 
 ### `server/rewards/reward.py`
 
