@@ -39,6 +39,7 @@ pip-wheel-metadata/
 # Environment and local config
 .env
 .env.*
+!.env.example
 .python-version
 
 # UV
