@@ -19,7 +19,7 @@ except Exception as e:  # pragma: no cover
         "openenv is required for the web interface. Install dependencies with 'uv sync'"
     ) from e
 
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 
 try:
     from ..models import ExperimentAction, ExperimentObservation
@@ -38,6 +38,7 @@ app = create_app(
 
 # Serve demo UI at root
 DEMO_HTML = Path(__file__).resolve().parent.parent / "demo.html"
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -48,6 +49,14 @@ async def demo_ui():
         content="<h1>DryLabSim API</h1><p>Visit /docs for API documentation.</p>",
         status_code=200,
     )
+
+
+@app.get("/assets/{filename}")
+async def serve_asset(filename: str):
+    file_path = ASSETS_DIR / filename
+    if file_path.exists() and file_path.is_file():
+        return FileResponse(file_path)
+    return HTMLResponse(content="Not found", status_code=404)
 
 
 def main(host: str = "0.0.0.0", port: int = 8000):
