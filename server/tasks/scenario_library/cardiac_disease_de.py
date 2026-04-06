@@ -9,8 +9,8 @@ if TYPE_CHECKING:
 else:
     # Import the same way as scenarios.py
     try:
-        from ...models import ExpectedFinding, PaperReference, TaskSpec
-        from ..simulator.latent_state import (
+        from ....models import ExpectedFinding, PaperReference, TaskSpec
+        from ...simulator.latent_state import (
             CellPopulation,
             LatentBiologicalState,
             TechnicalState,
