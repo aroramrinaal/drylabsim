@@ -43,3 +43,6 @@ pip-wheel-metadata/
 
 # UV
 .uv/
+
+# AI context folder
+.context/

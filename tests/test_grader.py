@@ -278,6 +278,8 @@ class TestBoundaryAcrossScenarios:
     def test_score_bounded_across_20_random_configs(self):
         import random
 
+        random.seed(42)
+
         all_markers = [
             "NPPA",
             "NPPB",
