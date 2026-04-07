@@ -3,8 +3,7 @@
 Each ``Scenario`` bundles a task specification together with the matching
 hidden ground-truth biology so the simulator can instantiate consistent
 episodes.  The library is intentionally diverse: it covers differential
-expression, trajectory inference, perturbation response, and biomarker
-validation across tissues and modalities.
+expression, trajectory inference, perturbation response, and multiclonal therapy resistance
 """
 
 from __future__ import annotations
