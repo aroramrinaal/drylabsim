@@ -1,5 +1,5 @@
 ---
-title: DryLabSim Server
+title: DryLabSim
 sdk: docker
 pinned: true
 app_port: 8000
@@ -11,7 +11,7 @@ tags:
 - computational biology
 colorFrom: green
 colorTo: green
-short_description: RL environment where LLM agents plan step-by-step bioinforma
+short_description: LLM Agents plan biological experiment pipelines
 ---
 
 # DryLabSim
