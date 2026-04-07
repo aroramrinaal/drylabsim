@@ -533,6 +533,7 @@
   </div>
 </div>
 
+<script src="./assets/episode-data.js"></script>
 <script>
 // =====================================================
 // VIRTUAL LAB - Canvas rendering
@@ -1319,96 +1320,7 @@ drawLab();
 // =====================================================
 // EPISODE DATA + APP LOGIC
 // =====================================================
-const EPISODE = [
-  {
-    action: 'collect_sample', params: 'n_samples=8, tissue="lung"', category: 'wet',
-    budget: 92400, budgetPct: 92.4, time: 165, timePct: 91.7,
-    output: ['Collected 8 lung tissue samples (4 IPF, 4 control)','Tissue quality: excellent | Storage: -80C'],
-    reward: { validity: 0.90, ordering: 1.00, info_gain: 0.10, efficiency: 0.72, novelty: 1.00, penalty: 0.0 },
-    total: 0.45,
-  },
-  {
-    action: 'select_cohort', params: 'criteria="age_matched, sex_balanced"', category: 'wet',
-    budget: 91800, budgetPct: 91.8, time: 162, timePct: 90.0,
-    output: ['Cohort selected: 4 IPF patients (2M/2F, age 58-67)','Controls matched: 4 healthy donors (2M/2F, age 55-65)'],
-    reward: { validity: 0.85, ordering: 0.90, info_gain: 0.15, efficiency: 0.80, novelty: 0.90, penalty: 0.0 },
-    total: 0.38,
-  },
-  {
-    action: 'prepare_library', params: 'protocol="10x_chromium_v3"', category: 'wet',
-    budget: 84200, budgetPct: 84.2, time: 155, timePct: 86.1,
-    output: ['Library prep complete using 10x Chromium v3','Estimated cell capture: ~12,000 cells','cDNA yield: 42ng (good)'],
-    reward: { validity: 0.95, ordering: 1.00, info_gain: 0.20, efficiency: 0.70, novelty: 0.95, penalty: 0.0 },
-    total: 0.52,
-  },
-  {
-    action: 'sequence_cells', params: 'depth="standard", platform="NovaSeq"', category: 'wet',
-    budget: 68500, budgetPct: 68.5, time: 142, timePct: 78.9,
-    output: ['11,847 cells sequenced | 22,438 genes detected','Median reads/cell: 45,200 | Median genes/cell: 3,842','Sequencing saturation: 78.3%'],
-    reward: { validity: 0.95, ordering: 1.00, info_gain: 0.55, efficiency: 0.60, novelty: 0.90, penalty: 0.0 },
-    total: 0.68,
-  },
-  {
-    action: 'run_qc', params: 'tool="scanpy", min_genes=200', category: 'comp',
-    budget: 68100, budgetPct: 68.1, time: 141, timePct: 78.3,
-    output: ['QC complete: 10,234 / 11,847 cells passed (86.4%)','Removed: 382 doublets (3.2%), 1,231 low-quality cells','Mitochondrial threshold: 20% (flagged 847 cells)'],
-    reward: { validity: 0.95, ordering: 1.00, info_gain: 0.35, efficiency: 0.85, novelty: 0.80, penalty: 0.0 },
-    total: 0.55,
-  },
-  {
-    action: 'normalize_data', params: 'method="scran", log_transform=true', category: 'comp',
-    budget: 67900, budgetPct: 67.9, time: 140, timePct: 77.8,
-    output: ['Size-factor normalization (scran) applied','Log1p transform complete | HVG selection: 3,000 genes'],
-    reward: { validity: 0.90, ordering: 1.00, info_gain: 0.25, efficiency: 0.90, novelty: 0.70, penalty: 0.0 },
-    total: 0.42,
-  },
-  {
-    action: 'cluster_cells', params: 'algorithm="leiden", resolution=0.8', category: 'comp',
-    budget: 67500, budgetPct: 67.5, time: 139, timePct: 77.2,
-    output: ['Leiden clustering: 14 clusters identified','AT1 (8.2%), AT2 (12.1%), Fibroblast (15.7%), Macrophage (18.3%)','Endothelial (9.4%), Basal (6.1%), Ciliated (5.8%), NK/T (7.2%)','Smooth Muscle (4.1%), Mast (2.9%), B cell (3.4%), pDC (2.0%)','Mesothelial (2.6%), Aberrant Basaloid (2.2%)'],
-    reward: { validity: 0.95, ordering: 1.00, info_gain: 0.65, efficiency: 0.85, novelty: 0.85, penalty: 0.0 },
-    total: 0.72,
-    discovery: { title: '14 cell populations identified', detail: 'Including Aberrant Basaloid cells (IPF-associated)', color: 'var(--cyan)', bg: 'var(--cyan-dim)' },
-  },
-  {
-    action: 'differential_expression', params: 'method="DESeq2", contrast="IPF_vs_Ctrl"', category: 'comp',
-    budget: 67000, budgetPct: 67.0, time: 137, timePct: 76.1,
-    output: ['1,847 DE genes (|log2FC| > 1, padj < 0.05)','Top upregulated in IPF:','  SPP1   log2FC=3.42  padj=1.2e-18','  MMP7   log2FC=2.89  padj=3.4e-15','  COL1A1 log2FC=2.67  padj=8.7e-14','  TGFB1  log2FC=1.95  padj=2.1e-09','Top downregulated: AGER (-3.1), SFTPC (-2.8), HOPX (-2.3)'],
-    reward: { validity: 0.95, ordering: 1.00, info_gain: 0.78, efficiency: 0.80, novelty: 0.88, penalty: 0.0 },
-    total: 0.82,
-    discovery: { title: 'SPP1 strongly upregulated in IPF', detail: 'log2FC=3.42, padj=1.2e-18', color: 'var(--pink)', bg: 'rgba(244,114,182,0.10)' },
-  },
-  {
-    action: 'pathway_enrichment', params: 'tool="gseapy", gene_sets="KEGG,Reactome"', category: 'comp',
-    budget: 66600, budgetPct: 66.6, time: 136, timePct: 75.6,
-    output: ['Top enriched pathways (IPF vs Control):','  ECM-receptor interaction     padj=4.2e-12','  TGF-beta signaling           padj=1.8e-09','  PI3K-Akt signaling           padj=3.1e-07','  Focal adhesion               padj=8.9e-07','SPP1 participates in 3/4 top pathways'],
-    reward: { validity: 0.90, ordering: 1.00, info_gain: 0.60, efficiency: 0.85, novelty: 0.75, penalty: 0.0 },
-    total: 0.58,
-    discovery: { title: 'SPP1 in ECM/TGF-beta/PI3K pathways', detail: 'Core fibrosis signaling axis confirmed', color: 'var(--purple)', bg: 'rgba(167,139,250,0.10)' },
-  },
-  {
-    action: 'marker_selection', params: 'candidates=["SPP1","MMP7","COL1A1"]', category: 'comp',
-    budget: 66200, budgetPct: 66.2, time: 135, timePct: 75.0,
-    output: ['Marker ranking by discriminative power:','  1. SPP1   - AUROC: 0.94, specificity: 0.89','  2. MMP7   - AUROC: 0.87, specificity: 0.82','  3. COL1A1 - AUROC: 0.81, specificity: 0.76','SPP1 selected as primary biomarker candidate'],
-    reward: { validity: 0.90, ordering: 1.00, info_gain: 0.50, efficiency: 0.88, novelty: 0.70, penalty: 0.0 },
-    total: 0.55,
-  },
-  {
-    action: 'validate_marker', params: 'gene="SPP1", method="cross_validation"', category: 'comp',
-    budget: 65200, budgetPct: 65.2, time: 130, timePct: 72.2,
-    output: ['SPP1 Biomarker Validation Report:','  5-fold CV AUROC:    0.91 (+/- 0.03)','  Sensitivity:         0.88','  Specificity:         0.87','  Positive LR:         6.77','  Expression in Aberrant Basaloid: 94.2% of cells','  Status: VALIDATED as IPF biomarker'],
-    reward: { validity: 0.95, ordering: 1.00, info_gain: 0.72, efficiency: 0.82, novelty: 0.85, penalty: 0.0 },
-    total: 0.76,
-    discovery: { title: 'SPP1 validated as IPF biomarker', detail: 'AUROC=0.91, specificity=0.87', color: 'var(--green)', bg: 'var(--green-dim)' },
-  },
-  {
-    action: 'synthesize_conclusion', params: 'confidence=0.85', category: 'meta',
-    budget: 65000, budgetPct: 65.0, time: 129, timePct: 71.7,
-    output: ['CONCLUSION (confidence: 0.85):','','SPP1 is a validated biomarker for IPF with strong','discriminative power (AUROC=0.91). It is upregulated','3.42-fold in IPF lungs, concentrated in Aberrant Basaloid','cells (94.2%), and participates in ECM-receptor, TGF-beta,','and PI3K-Akt signaling pathways.','','Literature match: 4/5 expected findings confirmed','Calibration: Well-calibrated (no overconfidence penalty)'],
-    reward: { validity: 1.00, ordering: 1.00, info_gain: 0.40, efficiency: 0.90, novelty: 0.50, penalty: 0.0 },
-    total: 0.91, terminal: true,
-  },
-];
+const EPISODE = window.DRYLABSIM_EPISODE;
 
 // State
 let running = false;
