@@ -98,6 +98,44 @@
         <span class="cum-label">Cumulative Reward</span>
         <span class="cum-value" id="cumReward">0.00</span>
       </div>
+      <div class="episode-grade-card">
+        <div class="panel-heading">Final Episode Grade</div>
+        <div class="episode-grade-header">
+          <div class="episode-grade-meta">
+            <div class="episode-grade-status" id="episodeGradeStatus">Computed at episode end</div>
+            <div class="episode-grade-score" id="episodeGradeScore">--</div>
+            <div class="episode-grade-label" id="episodeGradeLabel">Awaiting terminal evaluation</div>
+          </div>
+          <div class="episode-grade-source" id="episodeGradeSource">grade_episode</div>
+        </div>
+        <div class="episode-grade-meter">
+          <div class="episode-grade-scale">
+            <span>0.00</span>
+            <span>1.00</span>
+          </div>
+          <div class="episode-grade-track">
+            <div class="episode-grade-fill" id="episodeGradeFill"></div>
+          </div>
+        </div>
+        <div class="episode-grade-breakdown">
+          <div class="episode-grade-metric">
+            <span class="episode-grade-metric-label">Pipeline</span>
+            <span class="episode-grade-metric-value" id="episodeGradeCompleteness">--</span>
+          </div>
+          <div class="episode-grade-metric">
+            <span class="episode-grade-metric-label">Biology</span>
+            <span class="episode-grade-metric-value" id="episodeGradeBiology">--</span>
+          </div>
+          <div class="episode-grade-metric">
+            <span class="episode-grade-metric-label">Efficiency</span>
+            <span class="episode-grade-metric-value" id="episodeGradeEfficiency">--</span>
+          </div>
+        </div>
+        <div class="episode-grade-caption">
+          Step reward is dense training feedback; final grade is normalized evaluation.
+          Normalized grade shown here is the grade_episode score.
+        </div>
+      </div>
     </div>
     <div class="panel-section">
       <div class="panel-heading">Reward History</div>
@@ -146,6 +184,7 @@ const {
   floorTileA: FLOOR_TILE_A,
   floorTileB: FLOOR_TILE_B,
 } = window.DRYLABSIM_LAB_THEME;
+const FINAL_GRADE = window.DRYLABSIM_FINAL_GRADE || null;
 
 function resizeLab() {
   const rect = labCanvas.parentElement.getBoundingClientRect();
@@ -964,6 +1003,37 @@ function clearRewardBars() {
   }
 }
 
+function setFinalGradePending() {
+  document.getElementById('episodeGradeStatus').textContent = 'Computed at episode end';
+  document.getElementById('episodeGradeScore').textContent = '--';
+  document.getElementById('episodeGradeLabel').textContent = 'Awaiting terminal evaluation';
+  document.getElementById('episodeGradeSource').textContent = 'grade_episode';
+  document.getElementById('episodeGradeFill').style.width = '0%';
+  document.getElementById('episodeGradeCompleteness').textContent = '--';
+  document.getElementById('episodeGradeBiology').textContent = '--';
+  document.getElementById('episodeGradeEfficiency').textContent = '--';
+}
+
+function renderFinalGradeCard(grade) {
+  if (!grade) {
+    setFinalGradePending();
+    return;
+  }
+  const score = Math.max(0, Math.min(1, grade.score ?? 0));
+  document.getElementById('episodeGradeStatus').textContent = 'Terminal evaluation complete';
+  document.getElementById('episodeGradeScore').textContent = score.toFixed(2);
+  document.getElementById('episodeGradeLabel').textContent = grade.label || 'Normalized episode score';
+  document.getElementById('episodeGradeSource').textContent = grade.source || 'grade_episode';
+  document.getElementById('episodeGradeFill').style.width = (score * 100) + '%';
+  document.getElementById('episodeGradeCompleteness').textContent = (grade.completeness ?? 0).toFixed(2);
+  document.getElementById('episodeGradeBiology').textContent = (grade.biology_score ?? 0).toFixed(2);
+  document.getElementById('episodeGradeEfficiency').textContent = (grade.efficiency_score ?? 0).toFixed(2);
+}
+
+function resetFinalGradeCard() {
+  setFinalGradePending();
+}
+
 function addPipeStep(step, index) {
   const el = document.createElement('div');
   el.className = 'pipe-step';
@@ -1015,6 +1085,7 @@ async function startDemo() {
   cumReward = 0;
   resetSidebarPanels();
   clearRewardBars();
+  resetFinalGradeCard();
   applyDefaultUiState();
   initAgent();
 
@@ -1041,6 +1112,9 @@ async function startDemo() {
   addLine('');
   addLine(DEMO_COPY.completionLines[0]);
   addLine(formatTemplate(DEMO_COPY.completionLines[1], { cumReward: cumReward.toFixed(2), stepCount: EPISODE.length }));
+  if (FINAL_GRADE) {
+    addLine(`final_episode_grade: <span class="t-ok">${FINAL_GRADE.score.toFixed(2)}</span> <span class="t-dim">(${FINAL_GRADE.source || 'grade_episode'})</span>`);
+  }
   addLine(DEMO_COPY.completionLines[2]);
   addLine(DEMO_COPY.completionLines[3]);
 
@@ -1113,6 +1187,7 @@ async function runStep(i) {
   spawnParticles(agent.targetX, agent.targetY, '#34d399', 6);
 
   if (step.terminal) {
+    renderFinalGradeCard(FINAL_GRADE);
     pipeEl.classList.remove('active');
     pipeEl.classList.add('done');
     pipeEl.querySelector('.step-icon').innerHTML = '&#10003;';
@@ -1125,6 +1200,7 @@ function resetDemo() {
   cumReward = 0;
   resetSidebarPanels();
   clearRewardBars();
+  resetFinalGradeCard();
   applyDefaultUiState();
   statusDot.classList.remove('live');
   statusText.textContent = DEMO_COPY.status.ready;
@@ -1137,6 +1213,7 @@ function resetDemo() {
 renderScenarioOptions();
 resetSidebarPanels();
 applyDefaultUiState();
+resetFinalGradeCard();
 statusText.textContent = DEMO_COPY.status.ready;
 runBtn.textContent = DEMO_COPY.buttons.run;
 for (const line of DEMO_COPY.initialLines) addLine(line);
