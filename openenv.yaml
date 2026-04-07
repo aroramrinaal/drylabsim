@@ -4,3 +4,13 @@ type: space
 runtime: fastapi
 app: server.app:app
 port: 8000
+
+tasks:
+  - id: cardiac_disease_de
+    grader: server.grader.grade:grade_episode
+  - id: hematopoiesis_trajectory
+    grader: server.grader.grade:grade_episode
+  - id: perturbation_immune
+    grader: server.grader.grade:grade_episode
+  - id: venetoclax_resistance_multiclone
+    grader: server.grader.grade:grade_episode
