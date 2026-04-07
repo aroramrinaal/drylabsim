@@ -6,6 +6,7 @@
 <title>DryLabSim</title>
   <link rel="icon" href="/demo/assets/favicon.ico" type="image/x-icon">
   <link rel="shortcut icon" href="/demo/assets/favicon.ico">
+  <link rel="stylesheet" href="/demo/assets/sidebar.css">
   <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
@@ -118,96 +119,6 @@
     display: grid;
     grid-template-columns: 260px 1fr 340px;
     overflow: hidden;
-  }
-
-  /* ---- Left Sidebar ---- */
-  .sidebar {
-    background: var(--bg-surface);
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-  }
-  .sidebar-section {
-    padding: 16px;
-    border-bottom: 1px solid var(--border);
-  }
-  .sidebar-heading {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--text-muted);
-    margin-bottom: 10px;
-  }
-  .scenario-list { display: flex; flex-direction: column; gap: 4px; }
-  .scenario-opt {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.15s;
-    border: 1px solid transparent;
-  }
-  .scenario-opt:hover { background: var(--bg-hover); }
-  .scenario-opt.active {
-    background: var(--accent-dim);
-    border-color: rgba(56,189,248,0.2);
-  }
-  .scenario-opt .sc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .scenario-opt .sc-name {
-    font-size: 12px; font-weight: 500; flex: 1;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .scenario-opt .sc-diff {
-    font-size: 10px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.5px;
-  }
-  .gauge { margin-bottom: 14px; }
-  .gauge:last-child { margin-bottom: 0; }
-  .gauge-header {
-    display: flex; justify-content: space-between;
-    align-items: baseline; margin-bottom: 6px;
-  }
-  .gauge-label { font-size: 12px; color: var(--text-dim); font-weight: 500; }
-  .gauge-value {
-    font-size: 12px; font-weight: 600;
-    font-family: 'JetBrains Mono', monospace;
-  }
-  .gauge-track {
-    height: 4px; background: var(--bg-hover);
-    border-radius: 4px; overflow: hidden;
-  }
-  .gauge-fill {
-    height: 100%; border-radius: 4px;
-    transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
-  }
-  .pipeline-steps { display: flex; flex-direction: column; gap: 2px; }
-  .pipe-step {
-    display: flex; align-items: center; gap: 8px;
-    padding: 5px 8px; border-radius: 4px;
-    font-size: 11px; font-family: 'JetBrains Mono', monospace;
-    color: var(--text-muted);
-    opacity: 0; transform: translateX(-8px);
-    transition: all 0.3s ease;
-  }
-  .pipe-step.visible { opacity: 1; transform: translateX(0); }
-  .pipe-step.active { color: var(--text); background: var(--accent-dim); }
-  .pipe-step.done { color: var(--text-dim); }
-  .pipe-step .step-icon {
-    width: 16px; height: 16px; border-radius: 50%;
-    border: 1.5px solid var(--text-muted);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 8px; flex-shrink: 0; transition: all 0.3s;
-  }
-  .pipe-step.done .step-icon {
-    background: var(--green-dim); border-color: var(--green); color: var(--green);
-  }
-  .pipe-step.active .step-icon {
-    border-color: var(--accent); background: var(--accent-dim);
-    color: var(--accent); animation: pulse 1.5s infinite;
   }
 
   /* ---- Center: Lab + Terminal ---- */
