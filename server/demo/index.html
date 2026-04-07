@@ -33,28 +33,7 @@
   <div class="sidebar">
     <div class="sidebar-section">
       <div class="sidebar-heading">Scenario</div>
-      <div class="scenario-list">
-        <div class="scenario-opt" onclick="selectScenario(this)">
-          <div class="sc-dot" style="background: var(--green);"></div>
-          <span class="sc-name">Cardiac Disease DE</span>
-          <span class="sc-diff" style="color: var(--green);">Easy</span>
-        </div>
-        <div class="scenario-opt" onclick="selectScenario(this)">
-          <div class="sc-dot" style="background: var(--amber);"></div>
-          <span class="sc-name">Hematopoiesis Trajectory</span>
-          <span class="sc-diff" style="color: var(--amber);">Med</span>
-        </div>
-        <div class="scenario-opt" onclick="selectScenario(this)">
-          <div class="sc-dot" style="background: var(--amber);"></div>
-          <span class="sc-name">Perturbation Immune</span>
-          <span class="sc-diff" style="color: var(--amber);">Med</span>
-        </div>
-        <div class="scenario-opt active" onclick="selectScenario(this)">
-          <div class="sc-dot" style="background: var(--red);"></div>
-          <span class="sc-name">Biomarker Validation (Lung)</span>
-          <span class="sc-diff" style="color: var(--red);">Hard</span>
-        </div>
-      </div>
+      <div class="scenario-list" id="scenarioList"></div>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Environment State</div>
@@ -122,15 +101,15 @@
     </div>
     <div class="panel-section">
       <div class="panel-heading">Reward History</div>
-      <div id="rewardHistory"><div class="empty-state">No steps yet</div></div>
+      <div id="rewardHistory"></div>
     </div>
     <div class="panel-section">
       <div class="panel-heading">Discoveries</div>
-      <div class="discovery-list" id="discoveries"><div class="empty-state">No discoveries yet</div></div>
+      <div class="discovery-list" id="discoveries"></div>
     </div>
     <div class="panel-section">
       <div class="panel-heading">Violations</div>
-      <div id="violations"><div class="empty-state">No violations</div></div>
+      <div id="violations"></div>
     </div>
   </div>
 </div>
@@ -140,6 +119,11 @@
 <script src="/demo/assets/lab-commands.js"></script>
 <script src="/demo/assets/lab-ui-text.js"></script>
 <script src="/demo/assets/lab-theme.js"></script>
+<script src="/demo/assets/ui-empty-states.js"></script>
+<script src="/demo/assets/demo-copy.js"></script>
+<script src="/demo/assets/reward-metrics.js"></script>
+<script src="/demo/assets/default-ui-state.js"></script>
+<script src="/demo/assets/scenario-catalog.js"></script>
 <script>
 // =====================================================
 // VIRTUAL LAB - Canvas rendering
@@ -895,6 +879,11 @@ drawLab();
 // EPISODE DATA + APP LOGIC
 // =====================================================
 const EPISODE = window.DRYLABSIM_EPISODE;
+const EMPTY_STATES = window.DRYLABSIM_EMPTY_STATES;
+const DEMO_COPY = window.DRYLABSIM_DEMO_COPY;
+const REWARD_METRICS = window.DRYLABSIM_REWARD_METRICS;
+const DEFAULT_UI_STATE = window.DRYLABSIM_DEFAULT_UI_STATE;
+const SCENARIO_CATALOG = window.DRYLABSIM_SCENARIO_CATALOG;
 
 // State
 let running = false;
@@ -906,6 +895,42 @@ const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const runBtn = document.getElementById('runBtn');
 const labActionLabel = document.getElementById('labActionLabel');
+const scenarioListEl = document.getElementById('scenarioList');
+
+function formatTemplate(template, values) {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? '');
+}
+
+function getEmptyStateMarkup(key) {
+  return `<div class="empty-state">${EMPTY_STATES[key]}</div>`;
+}
+
+function resetSidebarPanels() {
+  document.getElementById('pipelineSteps').innerHTML = '';
+  document.getElementById('discoveries').innerHTML = getEmptyStateMarkup('discoveries');
+  document.getElementById('rewardHistory').innerHTML = getEmptyStateMarkup('rewardHistory');
+  document.getElementById('violations').innerHTML = getEmptyStateMarkup('violations');
+}
+
+function applyDefaultUiState() {
+  document.getElementById('cumReward').textContent = DEFAULT_UI_STATE.cumulativeReward;
+  document.getElementById('stepRewardLabel').textContent = DEFAULT_UI_STATE.stepRewardLabel;
+  setGauge('budget', DEFAULT_UI_STATE.gauges.budget.value, DEFAULT_UI_STATE.gauges.budget.pct, DEFAULT_UI_STATE.gauges.budget.color);
+  setGauge('time', DEFAULT_UI_STATE.gauges.time.value, DEFAULT_UI_STATE.gauges.time.pct, DEFAULT_UI_STATE.gauges.time.color);
+  setGauge('step', DEFAULT_UI_STATE.gauges.step.value, DEFAULT_UI_STATE.gauges.step.pct, DEFAULT_UI_STATE.gauges.step.color);
+}
+
+function renderScenarioOptions() {
+  scenarioListEl.innerHTML = '';
+  for (const scenario of SCENARIO_CATALOG) {
+    const el = document.createElement('div');
+    el.className = 'scenario-opt' + (scenario.active ? ' active' : '');
+    el.dataset.slug = scenario.slug;
+    el.innerHTML = `<div class="sc-dot" style="background: ${scenario.color};"></div><span class="sc-name">${scenario.name}</span><span class="sc-diff" style="color: ${scenario.color};">${scenario.difficulty}</span>`;
+    el.onclick = () => selectScenario(el);
+    scenarioListEl.appendChild(el);
+  }
+}
 
 // Helpers
 function addLine(html) {
@@ -924,7 +949,7 @@ function setGauge(id, value, pct, color) {
 }
 
 function setRewardBars(r) {
-  for (const key of ['validity','ordering','info_gain','efficiency','novelty','penalty']) {
+  for (const key of REWARD_METRICS) {
     const el = document.getElementById('rw-' + key);
     el.style.width = (r[key] * 100) + '%';
     el.textContent = r[key] > 0.01 ? r[key].toFixed(2) : '';
@@ -932,7 +957,7 @@ function setRewardBars(r) {
 }
 
 function clearRewardBars() {
-  for (const key of ['validity','ordering','info_gain','efficiency','novelty','penalty']) {
+  for (const key of REWARD_METRICS) {
     const el = document.getElementById('rw-' + key);
     el.style.width = '0%';
     el.textContent = '';
@@ -983,29 +1008,25 @@ async function startDemo() {
   if (running) return;
   running = true;
   runBtn.disabled = true;
-  runBtn.textContent = 'Running...';
+  runBtn.textContent = DEMO_COPY.buttons.running;
   statusDot.classList.add('live');
-  statusText.textContent = 'Running';
+  statusText.textContent = DEMO_COPY.status.running;
   terminalEl.innerHTML = '';
   cumReward = 0;
-  document.getElementById('pipelineSteps').innerHTML = '';
-  document.getElementById('discoveries').innerHTML = '<div class="empty-state">No discoveries yet</div>';
-  document.getElementById('rewardHistory').innerHTML = '<div class="empty-state">No steps yet</div>';
-  document.getElementById('violations').innerHTML = '<div class="empty-state">No violations</div>';
+  resetSidebarPanels();
   clearRewardBars();
-  document.getElementById('cumReward').textContent = '0.00';
-  document.getElementById('stepRewardLabel').textContent = '--';
+  applyDefaultUiState();
   initAgent();
 
-  addLine('<span class="t-label">[DryLabSim]</span> <span class="t-dim">Initializing environment...</span>');
+  addLine(DEMO_COPY.introLines[0]);
   await wait(500);
-  addLine('<span class="t-label">[DryLabSim]</span> Scenario: <span class="t-str">biomarker_validation_lung</span> (Hard)');
+  addLine(DEMO_COPY.introLines[1]);
   await wait(200);
-  addLine('<span class="t-label">[DryLabSim]</span> Organism: <span class="t-str">Homo sapiens</span> | Tissue: <span class="t-str">Lung</span>');
+  addLine(DEMO_COPY.introLines[2]);
   await wait(200);
-  addLine('<span class="t-label">[DryLabSim]</span> Budget: <span class="t-num">$100,000</span> | Time: <span class="t-num">180 days</span> | Max steps: <span class="t-num">30</span>');
+  addLine(DEMO_COPY.introLines[3]);
   await wait(200);
-  addLine('<span class="t-label">[DryLabSim]</span> Task: Validate <span class="t-kw">SPP1</span> as biomarker for idiopathic pulmonary fibrosis');
+  addLine(DEMO_COPY.introLines[4]);
   await wait(400);
   addLine('');
 
@@ -1018,14 +1039,14 @@ async function startDemo() {
   moveAgentTo('idle');
   labActionLabel.classList.remove('visible');
   addLine('');
-  addLine('<span class="t-label">[DryLabSim]</span> <span class="t-ok">Episode complete!</span>');
-  addLine('<span class="t-label">[DryLabSim]</span> Total reward: <span class="t-ok">+' + cumReward.toFixed(2) + '</span> | Steps: <span class="t-num">' + EPISODE.length + '</span> | Budget remaining: <span class="t-num">$65,000</span>');
-  addLine('<span class="t-label">[DryLabSim]</span> Literature match: <span class="t-ok">4/5 expected findings confirmed</span>');
-  addLine('<span class="t-label">[DryLabSim]</span> Calibration: <span class="t-ok">Well-calibrated</span> (no overconfidence penalty)');
+  addLine(DEMO_COPY.completionLines[0]);
+  addLine(formatTemplate(DEMO_COPY.completionLines[1], { cumReward: cumReward.toFixed(2), stepCount: EPISODE.length }));
+  addLine(DEMO_COPY.completionLines[2]);
+  addLine(DEMO_COPY.completionLines[3]);
 
   statusDot.classList.remove('live');
-  statusText.textContent = 'Complete';
-  runBtn.textContent = 'Run Episode';
+  statusText.textContent = DEMO_COPY.status.complete;
+  runBtn.textContent = DEMO_COPY.buttons.run;
   runBtn.disabled = false;
   running = false;
 }
@@ -1102,26 +1123,23 @@ function resetDemo() {
   if (running) return;
   terminalEl.innerHTML = '';
   cumReward = 0;
-  document.getElementById('pipelineSteps').innerHTML = '';
-  document.getElementById('discoveries').innerHTML = '<div class="empty-state">No discoveries yet</div>';
-  document.getElementById('rewardHistory').innerHTML = '<div class="empty-state">No steps yet</div>';
-  document.getElementById('violations').innerHTML = '<div class="empty-state">No violations</div>';
+  resetSidebarPanels();
   clearRewardBars();
-  document.getElementById('cumReward').textContent = '0.00';
-  document.getElementById('stepRewardLabel').textContent = '--';
-  setGauge('budget', '$100,000', 100, 'var(--green)');
-  setGauge('time', '180 / 180 days', 100, 'var(--cyan)');
-  setGauge('step', '0 / 30', 0, 'var(--accent)');
+  applyDefaultUiState();
   statusDot.classList.remove('live');
-  statusText.textContent = 'Ready';
+  statusText.textContent = DEMO_COPY.status.ready;
   labActionLabel.classList.remove('visible');
   initAgent();
-  addLine('<span class="t-dim">Environment reset. Click "Run Episode" to start.</span>');
+  addLine(DEMO_COPY.resetLine);
 }
 
 // Init
-addLine('<span class="t-dim">DryLabSim v1.0 | biomarker_validation_lung</span>');
-addLine('<span class="t-dim">Click "Run Episode" to start the demo.</span>');
+renderScenarioOptions();
+resetSidebarPanels();
+applyDefaultUiState();
+statusText.textContent = DEMO_COPY.status.ready;
+runBtn.textContent = DEMO_COPY.buttons.run;
+for (const line of DEMO_COPY.initialLines) addLine(line);
 </script>
 </body>
 </html>
