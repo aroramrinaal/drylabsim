@@ -35,6 +35,53 @@ def _make_state() -> FullLatentState:
     )
 
 
+def _make_multiclone_state() -> FullLatentState:
+    return FullLatentState(
+        biology=LatentBiologicalState(
+            cell_populations=[
+                CellPopulation(name="AML_founder_blast", proportion=0.35, marker_genes=["FLT3"]),
+                CellPopulation(name="MCL1_resistant_clone", proportion=0.18, marker_genes=["MCL1", "BCL2A1"]),
+                CellPopulation(name="JAK2_STAT5_resistant_clone", proportion=0.12, marker_genes=["JAK2", "STAT5A"]),
+                CellPopulation(name="GMP_like", proportion=0.20, marker_genes=["CEBPA"]),
+                CellPopulation(name="T_cell", proportion=0.15, marker_genes=["CD3D"]),
+            ],
+            true_de_genes={"post_vs_pre_bulk": {"MCL1": 0.9, "JAK2": 0.7, "PIM1": 1.0}},
+            true_pathways={"intrinsic_apoptosis_regulation": 0.88, "JAK_STAT_signalling": 0.84},
+            true_trajectory={"root": "AML_founder_blast", "n_lineages": 2, "branching": True},
+            true_regulatory_network={"CREB1": ["MCL1"], "STAT5A": ["PIM1"]},
+            clone_truth={
+                "MCL1_resistant_clone": {
+                    "size": 0.18,
+                    "markers": ["MCL1", "BCL2A1"],
+                    "de_genes": {"MCL1": 1.8, "BCL2A1": 1.4},
+                    "pathways": {"intrinsic_apoptosis_regulation": 0.95},
+                    "regulators": ["CREB1", "ATF4"],
+                    "mechanism": "MCL1 escape",
+                },
+                "JAK2_STAT5_resistant_clone": {
+                    "size": 0.12,
+                    "markers": ["JAK2", "STAT5A", "PIM1"],
+                    "de_genes": {"JAK2": 1.5, "STAT5A": 1.4, "PIM1": 1.7},
+                    "pathways": {"JAK_STAT_signalling": 0.97},
+                    "regulators": ["STAT5A", "JAK2"],
+                    "mechanism": "STAT5 survival",
+                },
+            },
+            true_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
+            causal_mechanisms=["MCL1 escape", "STAT5 survival"],
+            n_true_cells=9000,
+        ),
+        technical=TechnicalState(
+            batch_effects={"pre": 0.10, "post": 0.18},
+            dropout_rate=0.12,
+            doublet_rate=0.05,
+        ),
+        progress=ExperimentProgress(data_normalized=True, batches_integrated=True),
+        resources=ResourceState(budget_total=120_000, time_limit_days=180),
+        scenario_name="venetoclax_resistance_multiclone",
+    )
+
+
 class TestNoiseModel:
     def test_deterministic_with_seed(self):
         n1 = NoiseModel(seed=42)
@@ -80,6 +127,34 @@ class TestOutputGenerator:
         gene_names = [g["gene"] for g in out.data["top_genes"]]
         assert "G1" in gene_names or "G2" in gene_names
 
+    def test_expert_multiclone_de_emits_clone_specific_results(self):
+        noise = NoiseModel(seed=42)
+        gen = OutputGenerator(noise)
+        s = _make_multiclone_state()
+        s.progress.cells_clustered = True
+        action = ExperimentAction(
+            action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+            parameters={"comparison": "post_vs_pre_bulk"},
+        )
+        out = gen.generate(action, s, 5)
+        assert out.output_type == OutputType.DE_RESULT
+        assert out.data["bulk_signal_is_mixed"] is True
+        assert "clone_de" in out.data
+        assert "MCL1_resistant_clone" in out.data["clone_de"]
+        assert "JAK2_STAT5_resistant_clone" in out.data["clone_de"]
+
+    def test_expert_pathway_enrichment_emits_clone_pathways(self):
+        noise = NoiseModel(seed=7)
+        gen = OutputGenerator(noise)
+        s = _make_multiclone_state()
+        s.progress.cells_clustered = True
+        s.progress.de_performed = True
+        action = ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT)
+        out = gen.generate(action, s, 6)
+        assert out.output_type == OutputType.PATHWAY_RESULT
+        assert "clone_pathways" in out.data
+        assert len(out.data["inferred_mechanisms"]) >= 2
+
 
 class TestTransitionEngine:
     def test_progress_flags_set(self):
@@ -119,3 +194,13 @@ class TestTransitionEngine:
         action = ExperimentAction(action_type=ActionType.SYNTHESIZE_CONCLUSION)
         result = engine.step(s, action)
         assert result.done is True
+
+    def test_expert_mechanism_confidence_propagates_from_analysis_outputs(self):
+        noise = NoiseModel(seed=0)
+        engine = TransitionEngine(noise)
+        s = _make_multiclone_state()
+        s.progress.cells_clustered = True
+        s.progress.de_performed = True
+        result = engine.step(s, ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT))
+        assert "MCL1 escape" in result.next_state.mechanism_confidence
+        assert "STAT5 survival" in result.next_state.mechanism_confidence

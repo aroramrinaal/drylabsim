@@ -204,6 +204,52 @@ def venetoclax_resistance_multiclone() -> Scenario:
                     "PIM1": 0.6,
                 },
             },
+            clone_truth={
+                "MCL1_resistant_clone": {
+                    "size": 0.18,
+                    "markers": ["MCL1", "BCL2A1", "SOX4", "IL1RAP"],
+                    "de_genes": {
+                        "MCL1": 1.8,
+                        "BCL2A1": 1.6,
+                        "SOX4": 1.1,
+                        "IL1RAP": 1.0,
+                        "BCL2": -1.2,
+                    },
+                    "pathways": {
+                        "intrinsic_apoptosis_regulation": 0.95,
+                        "oxidative_phosphorylation": 0.78,
+                    },
+                    "regulators": ["CREB1", "ATF4", "MYC"],
+                    "mechanism": (
+                        "An MCL1/BCL2A1 anti-apoptotic escape program sustains "
+                        "one resistant AML subclone under venetoclax pressure"
+                    ),
+                },
+                "JAK2_STAT5_resistant_clone": {
+                    "size": 0.12,
+                    "markers": ["JAK2", "STAT5A", "PIM1", "SOCS2"],
+                    "de_genes": {
+                        "JAK2": 1.5,
+                        "STAT5A": 1.4,
+                        "PIM1": 1.7,
+                        "SOCS2": 1.3,
+                        "BCL2": -0.8,
+                    },
+                    "pathways": {
+                        "JAK_STAT_signalling": 0.97,
+                        "stress_response": 0.62,
+                    },
+                    "regulators": ["STAT5A", "JAK2", "MYC"],
+                    "mechanism": (
+                        "A JAK2-STAT5-PIM1 survival program sustains a second "
+                        "resistant AML subclone in parallel"
+                    ),
+                },
+            },
+            confounders={
+                "bulk_signal_cancellation": 0.85,
+                "minor_clone_underrepresentation": 0.70,
+            },
             true_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1", "SOCS2"],
             causal_mechanisms=[
                 "An MCL1/BCL2A1 anti-apoptotic escape program sustains one resistant AML subclone under venetoclax pressure",

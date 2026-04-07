@@ -67,6 +67,8 @@ _REQUIRES = {
     ],
 }
 
+_MULTICLONE_EXPERT_SCENARIO = "venetoclax_resistance_multiclone"
+
 
 def check_prerequisites(
     action: ExperimentAction, s: FullLatentState
@@ -82,6 +84,41 @@ def check_prerequisites(
                     rule_id=f"prereq_{at.value}_{flag}",
                     severity=Severity.HARD,
                     message=msg,
+                )
+            )
+
+    if s.scenario_name == _MULTICLONE_EXPERT_SCENARIO:
+        if at == ActionType.DIFFERENTIAL_EXPRESSION and not p.cells_clustered:
+            vs.append(
+                RuleViolation(
+                    rule_id="expert_multiclone_de_requires_clustering",
+                    severity=Severity.HARD,
+                    message=(
+                        "This multiclone resistance scenario requires clustering "
+                        "before DE so resistant subclones can be separated"
+                    ),
+                )
+            )
+        if at == ActionType.TRAJECTORY_ANALYSIS and not p.cells_clustered:
+            vs.append(
+                RuleViolation(
+                    rule_id="expert_multiclone_trajectory_requires_clustering",
+                    severity=Severity.HARD,
+                    message=(
+                        "Trajectory analysis requires resolved clusters in this "
+                        "multiclone resistance scenario"
+                    ),
+                )
+            )
+        if at == ActionType.REGULATORY_NETWORK_INFERENCE and not p.cells_clustered:
+            vs.append(
+                RuleViolation(
+                    rule_id="expert_multiclone_network_requires_clustering",
+                    severity=Severity.HARD,
+                    message=(
+                        "Regulatory network inference requires clustered relapse "
+                        "states in this multiclone resistance scenario"
+                    ),
                 )
             )
     return vs

@@ -13,6 +13,8 @@ except ImportError:  # pragma: no cover
 
 from .types import RuleViolation, Severity
 
+_MULTICLONE_EXPERT_SCENARIO = "venetoclax_resistance_multiclone"
+
 
 def _has_analysis_evidence(s: FullLatentState) -> bool:
     p = s.progress
@@ -44,6 +46,7 @@ def check_causal_validity(
 ) -> List[RuleViolation]:
     vs: List[RuleViolation] = []
     has_analysis_evidence = _has_analysis_evidence(s)
+    is_multiclone_expert = s.scenario_name == _MULTICLONE_EXPERT_SCENARIO
 
     if action.action_type == ActionType.DESIGN_FOLLOWUP:
         if not has_analysis_evidence:
@@ -99,8 +102,57 @@ def check_causal_validity(
                 )
             )
 
+        if is_multiclone_expert:
+            if not s.progress.trajectories_inferred:
+                vs.append(
+                    RuleViolation(
+                        rule_id="expert_conclusion_without_trajectory",
+                        severity=Severity.HARD,
+                        message=(
+                            "Cannot synthesise the multiclone resistance conclusion "
+                            "before trajectory evidence resolves parallel branches"
+                        ),
+                    )
+                )
+            if not s.progress.networks_inferred:
+                vs.append(
+                    RuleViolation(
+                        rule_id="expert_conclusion_without_network",
+                        severity=Severity.HARD,
+                        message=(
+                            "Cannot synthesise the multiclone resistance conclusion "
+                            "before regulatory evidence resolves clone-specific wiring"
+                        ),
+                    )
+                )
+            if len(s.discovered_clusters) < 2:
+                vs.append(
+                    RuleViolation(
+                        rule_id="expert_conclusion_without_multiple_clusters",
+                        severity=Severity.HARD,
+                        message=(
+                            "Cannot synthesise the multiclone resistance conclusion "
+                            "before at least two relapse clusters are resolved"
+                        ),
+                    )
+                )
+            if len(s.mechanism_confidence) < 2:
+                vs.append(
+                    RuleViolation(
+                        rule_id="expert_conclusion_without_both_mechanisms",
+                        severity=Severity.HARD,
+                        message=(
+                            "Cannot synthesise the multiclone resistance conclusion "
+                            "before both resistant mechanisms have supporting evidence"
+                        ),
+                    )
+                )
+
         claims = action.parameters.get("claims", [])
+        unique_claim_mechs = set()
         for claim in claims:
+            if isinstance(claim, dict):
+                unique_claim_mechs.update(claim.get("causal_mechanisms", []))
             if isinstance(claim, dict) and claim.get("claim_type") == "causal":
                 if (
                     not s.progress.markers_validated
@@ -114,6 +166,17 @@ def check_causal_validity(
                         )
                     )
                     break
+        if is_multiclone_expert and claims and len(unique_claim_mechs) < 2:
+            vs.append(
+                RuleViolation(
+                    rule_id="expert_single_mechanism_conclusion",
+                    severity=Severity.SOFT,
+                    message=(
+                        "Conclusion names fewer than two resistant mechanisms in a "
+                        "scenario whose ground truth is explicitly multiclonal"
+                    ),
+                )
+            )
 
     if action.action_type == ActionType.PATHWAY_ENRICHMENT:
         if not s.progress.de_performed:
@@ -122,6 +185,21 @@ def check_causal_validity(
                     rule_id="pathway_without_de",
                     severity=Severity.SOFT,
                     message="Pathway enrichment without DE may yield unreliable results",
+                )
+            )
+    if is_multiclone_expert and action.action_type in {
+        ActionType.CLUSTER_CELLS,
+        ActionType.DIFFERENTIAL_EXPRESSION,
+    }:
+        if len(s.technical.batch_effects) > 1 and not s.progress.batches_integrated:
+            vs.append(
+                RuleViolation(
+                    rule_id="expert_multiclone_without_batch_integration",
+                    severity=Severity.SOFT,
+                    message=(
+                        "Skipping batch integration may merge or obscure the minor "
+                        "resistant clone in this multiclone scenario"
+                    ),
                 )
             )
     return vs
