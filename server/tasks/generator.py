@@ -67,6 +67,7 @@ class TaskGenerator:
             scenario = self.scenarios[idx]
 
         task = scenario.task.model_copy(deep=True)
+        task.difficulty = scenario.difficulty
         biology = scenario.biology.model_copy(deep=True)
         technical = scenario.technical.model_copy(deep=True)
 

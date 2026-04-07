@@ -273,6 +273,84 @@ class TestReproducibility:
         assert result1.biology_score == result2.biology_score
         assert result1.efficiency_score == result2.efficiency_score
 
+    def test_same_inputs_same_score_with_mechanism_confidence(self):
+        progress = ExperimentProgress(
+            samples_collected=True,
+            cells_sequenced=True,
+            qc_performed=True,
+            data_normalized=True,
+            de_performed=True,
+            conclusion_reached=True,
+        )
+        latent = _make_latent(
+            progress=progress,
+            true_markers=["MCL1", "JAK2"],
+            causal_mechanisms=["MCL1 escape", "STAT5 survival"],
+            true_pathways={"JAK_STAT_signalling": 0.8},
+            budget_total=120_000,
+            budget_used=60_000,
+        )
+        obs = _make_obs(
+            discovered_markers=["MCL1", "JAK2"],
+            candidate_mechanisms=["MCL1 escape", "STAT5 survival"],
+            conclusions=[
+                ConclusionClaim(
+                    top_markers=["MCL1", "JAK2"],
+                    causal_mechanisms=["MCL1 escape", "STAT5 survival"],
+                    mechanism_confidence={
+                        "MCL1 escape": 0.82,
+                        "STAT5 survival": 0.67,
+                    },
+                    confidence=0.78,
+                ),
+            ],
+        )
+
+        result1 = grade_episode(obs, latent)
+        result2 = grade_episode(obs, latent)
+
+        assert result1.score == result2.score
+        assert 0.0 <= result1.score <= 1.0
+
+
+class TestMechanismConfidence:
+    def test_wrong_high_confidence_mechanism_is_penalized(self):
+        latent = _make_latent(
+            progress=ExperimentProgress(conclusion_reached=True),
+            true_markers=["MCL1", "JAK2"],
+            causal_mechanisms=["MCL1 escape", "STAT5 survival"],
+            true_pathways={"JAK_STAT_signalling": 0.8},
+        )
+        obs_good = _make_obs(
+            conclusions=[
+                ConclusionClaim(
+                    causal_mechanisms=["MCL1 escape", "STAT5 survival"],
+                    mechanism_confidence={
+                        "MCL1 escape": 0.8,
+                        "STAT5 survival": 0.65,
+                    },
+                    confidence=0.75,
+                ),
+            ],
+        )
+        obs_bad = _make_obs(
+            conclusions=[
+                ConclusionClaim(
+                    causal_mechanisms=["MCL1 escape", "totally wrong mechanism"],
+                    mechanism_confidence={
+                        "MCL1 escape": 0.8,
+                        "totally wrong mechanism": 0.95,
+                    },
+                    confidence=0.75,
+                ),
+            ],
+        )
+
+        good = grade_episode(obs_good, latent)
+        bad = grade_episode(obs_bad, latent)
+
+        assert good.score > bad.score
+
 
 class TestBoundaryAcrossScenarios:
     def test_score_bounded_across_20_random_configs(self):

@@ -95,6 +95,22 @@ _DIFFICULTY_PARAMS = {
         "include_network": True,
         "include_failure_conditions": True,
     },
+    "expert": {
+        "n_pops": (7, 10),
+        "de_scale": (0.35, 0.85),
+        "noise_dropout": (0.12, 0.24),
+        "noise_doublet": (0.07, 0.14),
+        "noise_ambient": (0.06, 0.12),
+        "noise_batch_strength": (0.15, 0.30),
+        "n_batches": (2, 5),
+        "budget_range": (120_000, 180_000),
+        "time_range": (180, 240),
+        "sample_quality": (0.60, 0.82),
+        "include_trajectory": True,
+        "include_perturbation": True,
+        "include_network": True,
+        "include_failure_conditions": True,
+    },
 }
 
 
@@ -110,7 +126,7 @@ def generate_scenario(
     seed
         RNG seed for reproducibility.
     difficulty
-        One of ``"easy"``, ``"medium"``, ``"hard"``.
+        One of ``"easy"``, ``"medium"``, ``"hard"``, ``"expert"``.
     scenario_type
         One of ``"de"``, ``"trajectory"``, ``"perturbation"``,
         ``"biomarker"``, or ``None`` for random selection.
@@ -202,6 +218,8 @@ def generate_procedural_scenarios(
     rng = np.random.default_rng(seed)
     scenarios: List[Scenario] = []
     difficulties = ["easy", "medium", "hard"]
+    if n >= 4:
+        difficulties = ["easy", "medium", "hard", "expert"]
 
     for i in range(n):
         diff = difficulties[i % len(difficulties)]

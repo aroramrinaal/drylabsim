@@ -50,6 +50,7 @@ def test_intermediate_output_quality_bounds():
 def test_task_spec_defaults():
     t = TaskSpec()
     assert "10x_chromium" in t.available_assays
+    assert t.difficulty == "medium"
     assert t.budget_limit == 100_000.0
     assert t.paper_references == []
     assert t.expected_findings == []
@@ -81,8 +82,10 @@ def test_conclusion_claim_serialization():
         claim="NPPA is upregulated in disease",
         evidence_steps=[3, 5],
         confidence=0.85,
+        mechanism_confidence={"TGF-beta-driven fibrosis": 0.7},
         claim_type="correlational",
     )
     d = c.model_dump()
     assert d["claim_type"] == "correlational"
     assert d["confidence"] == 0.85
+    assert d["mechanism_confidence"]["TGF-beta-driven fibrosis"] == 0.7

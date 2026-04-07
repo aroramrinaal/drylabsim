@@ -1263,6 +1263,7 @@ class TaskSpec(BaseModel):
     """Specification of the biological problem to solve."""
 
     problem_statement: str = "Unspecified biological problem"
+    difficulty: str = "medium"
     modality: str = "scRNA-seq"
     organism: str = "human"
     tissue: str = "blood"
@@ -1296,6 +1297,7 @@ class ConclusionClaim(BaseModel):
     claim: str = ""
     top_markers: List[str] = Field(default_factory=list)
     causal_mechanisms: List[str] = Field(default_factory=list)
+    mechanism_confidence: Dict[str, float] = Field(default_factory=dict)
     predicted_pathways: Dict[str, float] = Field(default_factory=dict)
     evidence_steps: List[int] = Field(default_factory=list)
     confidence: float = Field(0.5, ge=0.0, le=1.0)

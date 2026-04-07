@@ -150,6 +150,11 @@ def calibration(s: FullLatentState, conclusions: List[ConclusionClaim]) -> float
     pred_markers = [g for c in conclusions for g in c.top_markers]
     pred_mechs = [m for c in conclusions for m in c.causal_mechanisms]
     pred_pathways = {p: v for c in conclusions for p, v in c.predicted_pathways.items()}
+    mech_conf = {
+        mech: float(conf)
+        for c in conclusions
+        for mech, conf in c.mechanism_confidence.items()
+    }
 
     has_structured = bool(pred_markers or pred_mechs or pred_pathways)
 
@@ -157,7 +162,23 @@ def calibration(s: FullLatentState, conclusions: List[ConclusionClaim]) -> float
         m_score = marker_set_score(pred_markers, s.biology.true_markers)
         mech_score = mechanism_set_score(pred_mechs, s.biology.causal_mechanisms)
         pw_score = score_pathways(pred_pathways, s.biology.true_pathways)
-        return 0.50 * m_score + 0.35 * mech_score + 0.15 * pw_score
+        calibrated_mech_score = mech_score
+        if mech_conf and s.biology.causal_mechanisms:
+            confidence_penalties: List[float] = []
+            truth_lower = [m.lower() for m in s.biology.causal_mechanisms]
+            for mech, conf in mech_conf.items():
+                mech_lower = mech.lower()
+                is_truth_like = any(
+                    mech_lower in t or t in mech_lower for t in truth_lower
+                )
+                confidence_penalties.append(
+                    1.0 - abs(float(conf) - (1.0 if is_truth_like else 0.0))
+                )
+            if confidence_penalties:
+                calibrated_mech_score = 0.7 * mech_score + 0.3 * (
+                    sum(confidence_penalties) / len(confidence_penalties)
+                )
+        return 0.50 * m_score + 0.35 * calibrated_mech_score + 0.15 * pw_score
 
     return legacy_calibration(s, conclusions)
 
@@ -215,6 +236,18 @@ def overconfidence_penalty(
     true_set = true_markers_lower | true_mechs_lower
 
     for c in conclusions:
+        if c.mechanism_confidence:
+            for mech, conf in c.mechanism_confidence.items():
+                if conf <= 0.8:
+                    continue
+                mech_lower = mech.lower()
+                is_correct = any(
+                    mech_lower in t.lower() or t.lower() in mech_lower
+                    for t in s.biology.causal_mechanisms
+                )
+                if not is_correct:
+                    penalty -= 0.5 * float(conf)
+
         if c.confidence <= 0.8:
             continue
 
