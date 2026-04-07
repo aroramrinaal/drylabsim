@@ -91,6 +91,9 @@ class TaskGenerator:
             ),
             hidden_failure_conditions=list(scenario.hidden_failure_conditions),
             task_modality=task.modality,
+            scenario_name=scenario.name,
+            scenario_difficulty=scenario.difficulty,
+            scenario_tags=list(scenario.tags),
             rng_seed=seed or 0,
         )
         return task, latent

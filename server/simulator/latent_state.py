@@ -49,6 +49,10 @@ class LatentBiologicalState(BaseModel):
         default_factory=dict,
         description="perturbation → {gene: effect_size}",
     )
+    clone_truth: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="clone_name → clone-specific DE/pathway/regulator/mechanism metadata",
+    )
     confounders: Dict[str, float] = Field(default_factory=dict)
     true_markers: List[str] = Field(default_factory=list)
     causal_mechanisms: List[str] = Field(default_factory=list)
@@ -142,7 +146,11 @@ class FullLatentState(BaseModel):
     mechanism_confidence: Dict[str, float] = Field(default_factory=dict)
     discovered_de_genes: List[str] = Field(default_factory=list)
     discovered_clusters: List[str] = Field(default_factory=list)
+    discovered_clone_markers: Dict[str, List[str]] = Field(default_factory=dict)
     task_modality: str = "scRNA-seq"
+    scenario_name: str = ""
+    scenario_difficulty: str = ""
+    scenario_tags: List[str] = Field(default_factory=list)
     step_count: int = 0
     rng_seed: int = 42
 

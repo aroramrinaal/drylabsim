@@ -53,6 +53,24 @@ class TestPrerequisites:
         hard = engine.hard_violations(violations)
         assert any("marker" in m.lower() for m in hard)
 
+    def test_expert_de_without_clustering_blocked(self):
+        engine = RuleEngine()
+        s = _state(
+            samples_collected=True,
+            library_prepared=True,
+            cells_sequenced=True,
+            qc_performed=True,
+            data_filtered=True,
+            data_normalized=True,
+        )
+        s.scenario_name = "venetoclax_resistance_multiclone"
+        violations = engine.check(
+            ExperimentAction(action_type=ActionType.DIFFERENTIAL_EXPRESSION),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert any("clustering" in m.lower() for m in hard)
+
 
 class TestRedundancy:
     def test_double_qc_is_hard_blocked(self):
@@ -116,6 +134,29 @@ class TestMetaActionTiming:
         )
         hard = engine.hard_violations(violations)
         assert not hard
+
+    def test_expert_conclusion_requires_branch_resolving_evidence(self):
+        engine = RuleEngine()
+        s = _state(
+            data_normalized=True,
+            cells_clustered=True,
+            de_performed=True,
+            markers_discovered=True,
+            pathways_analyzed=True,
+        )
+        s.scenario_name = "venetoclax_resistance_multiclone"
+        s.discovered_clusters = ["MCL1_resistant_clone", "JAK2_STAT5_resistant_clone"]
+        s.mechanism_confidence = {
+            "An MCL1/BCL2A1 anti-apoptotic escape program sustains one resistant AML subclone under venetoclax pressure": 0.8,
+        }
+        violations = engine.check(
+            ExperimentAction(action_type=ActionType.SYNTHESIZE_CONCLUSION),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert any("trajectory" in m.lower() for m in hard)
+        assert any("regulatory" in m.lower() or "wiring" in m.lower() for m in hard)
+        assert any("both resistant mechanisms" in m.lower() for m in hard)
 
 
 class TestResourceConstraints:

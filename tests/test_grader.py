@@ -285,13 +285,13 @@ class TestBoundaryAcrossScenarios:
             "NPPB",
             "POSTN",
             "COL1A1",
-            "SPP1",
-            "MERTK",
+            "MCL1",
+            "BCL2A1",
             "GATA1",
             "CEBPA",
             "SPI1",
-            "STAT1",
-            "SOCS1",
+            "STAT5A",
+            "SOCS2",
             "IFNG",
         ]
         all_mechs = [
@@ -301,7 +301,7 @@ class TestBoundaryAcrossScenarios:
             "PU.1/CEBPA antagonism at myeloid branch point",
             "JAK-STAT pathway inhibition reduces Th1/Th17 activation",
             "Compensatory Treg expansion under JAK inhibition",
-            "SPP1+ macrophage-driven fibroblast activation",
+            "An MCL1/BCL2A1 anti-apoptotic escape program sustains one resistant AML subclone under venetoclax pressure",
         ]
 
         for i in range(20):

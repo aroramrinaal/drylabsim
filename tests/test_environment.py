@@ -126,3 +126,77 @@ class TestEnvironmentLifecycle:
         assert obs.latest_output.success is False
         assert obs.conclusions == []
         assert any("markers" in msg.lower() for msg in obs.rule_violations)
+
+    def test_expert_scenario_blocks_de_until_clustering(self):
+        env = BioExperimentEnvironment(
+            scenario_name="venetoclax_resistance_multiclone",
+            domain_randomise=False,
+        )
+        env.reset()
+
+        pipeline = [
+            ExperimentAction(action_type=ActionType.COLLECT_SAMPLE),
+            ExperimentAction(action_type=ActionType.PREPARE_LIBRARY),
+            ExperimentAction(action_type=ActionType.SEQUENCE_CELLS),
+            ExperimentAction(action_type=ActionType.RUN_QC),
+            ExperimentAction(action_type=ActionType.FILTER_DATA),
+            ExperimentAction(action_type=ActionType.NORMALIZE_DATA),
+        ]
+        for action in pipeline:
+            obs = env.step(action)
+            assert obs.latest_output is not None
+            assert obs.latest_output.success is True
+
+        obs = env.step(ExperimentAction(action_type=ActionType.DIFFERENTIAL_EXPRESSION))
+        assert obs.latest_output is not None
+        assert obs.latest_output.success is False
+        assert any("clustering" in msg.lower() for msg in obs.rule_violations)
+
+    def test_expert_scenario_blocks_conclusion_without_second_wave_evidence(self):
+        env = BioExperimentEnvironment(
+            scenario_name="venetoclax_resistance_multiclone",
+            domain_randomise=False,
+        )
+        env.reset()
+
+        pipeline = [
+            ExperimentAction(action_type=ActionType.COLLECT_SAMPLE),
+            ExperimentAction(action_type=ActionType.PREPARE_LIBRARY),
+            ExperimentAction(action_type=ActionType.SEQUENCE_CELLS),
+            ExperimentAction(action_type=ActionType.RUN_QC),
+            ExperimentAction(action_type=ActionType.FILTER_DATA),
+            ExperimentAction(action_type=ActionType.NORMALIZE_DATA),
+            ExperimentAction(action_type=ActionType.INTEGRATE_BATCHES),
+            ExperimentAction(action_type=ActionType.CLUSTER_CELLS),
+            ExperimentAction(
+                action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+                parameters={"comparison": "post_vs_pre_bulk"},
+            ),
+            ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT),
+            ExperimentAction(action_type=ActionType.MARKER_SELECTION),
+        ]
+        for action in pipeline:
+            obs = env.step(action)
+            assert obs.latest_output is not None
+            assert obs.latest_output.success is True
+
+        obs = env.step(
+            ExperimentAction(
+                action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                parameters={
+                    "claims": [
+                        {
+                            "claim": "One resistant mechanism dominates relapse",
+                            "causal_mechanisms": [
+                                "An MCL1/BCL2A1 anti-apoptotic escape program sustains one resistant AML subclone under venetoclax pressure"
+                            ],
+                            "confidence": 0.9,
+                            "claim_type": "causal",
+                        }
+                    ]
+                },
+            )
+        )
+        assert obs.latest_output is not None
+        assert obs.latest_output.success is False
+        assert any("trajectory" in msg.lower() for msg in obs.rule_violations)
