@@ -17,6 +17,9 @@
 
 <!-- Top Bar -->
 <div class="topbar">
+  <button class="topbar-btn btn-primary" id="runBtn" onclick="startDemo()">Run Episode</button>
+  <button class="topbar-btn btn-ghost" id="resetBtn" onclick="resetDemo()">Reset</button>
+  <div class="topbar-sep"></div>
   <div class="topbar-logo">DryLabSim</div>
   <div class="topbar-sep"></div>
   <div class="topbar-env">venetoclax_resistance_multiclone</div>
@@ -24,8 +27,6 @@
     <div class="status-dot" id="statusDot"></div>
     <span id="statusText">Ready</span>
   </div>
-  <button class="topbar-btn btn-ghost" id="resetBtn" onclick="resetDemo()">Reset</button>
-  <button class="topbar-btn btn-primary" id="runBtn" onclick="startDemo()">Run Episode</button>
 </div>
 
 <div class="main">
@@ -59,18 +60,85 @@
         <div class="gauge-track"><div class="gauge-fill" id="stepFill" style="width:0%;background:var(--accent);"></div></div>
       </div>
     </div>
-    <div class="sidebar-section" style="flex:1;overflow-y:auto;">
+    <div class="sidebar-section">
       <div class="sidebar-heading">Pipeline</div>
       <div class="pipeline-steps" id="pipelineSteps"></div>
     </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Reward History</div>
+      <div id="rewardHistory"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Discoveries</div>
+      <div class="discovery-list" id="discoveries"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Violations</div>
+      <div id="violations"></div>
+    </div>
   </div>
 
-  <!-- Center: Lab + Terminal -->
+  <!-- Center: Metrics + Terminal -->
   <div class="center">
-    <div class="lab-panel">
-      <div class="lab-label">Virtual Lab</div>
-      <div class="lab-action-label" id="labActionLabel"></div>
-      <canvas id="labCanvas"></canvas>
+    <div class="metrics-panel">
+      <div class="metrics-col">
+        <div class="panel-heading">
+          Step Reward
+          <span id="stepRewardLabel" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);">--</span>
+        </div>
+        <div id="rewardBars">
+          <div class="reward-row"><span class="rw-label">Validity</span><div class="rw-track"><div class="rw-fill validity" id="rw-validity"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Ordering</span><div class="rw-track"><div class="rw-fill ordering" id="rw-ordering"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Info Gain</span><div class="rw-track"><div class="rw-fill info_gain" id="rw-info_gain"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Efficiency</span><div class="rw-track"><div class="rw-fill efficiency" id="rw-efficiency"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Novelty</span><div class="rw-track"><div class="rw-fill novelty" id="rw-novelty"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Penalty</span><div class="rw-track"><div class="rw-fill penalty" id="rw-penalty"></div></div></div>
+        </div>
+        <div class="cumulative-row">
+          <span class="cum-label">Cumulative Reward</span>
+          <span class="cum-value" id="cumReward">0.00</span>
+        </div>
+      </div>
+      <div class="metrics-col">
+        <div class="episode-grade-card">
+          <div class="panel-heading">Final Episode Grade</div>
+          <div class="episode-grade-header">
+            <div class="episode-grade-meta">
+              <div class="episode-grade-status" id="episodeGradeStatus">Computed at episode end</div>
+              <div class="episode-grade-score" id="episodeGradeScore">--</div>
+              <div class="episode-grade-label" id="episodeGradeLabel">Awaiting terminal evaluation</div>
+            </div>
+            <div class="episode-grade-source" id="episodeGradeSource">grade_episode</div>
+          </div>
+          <div class="episode-grade-meter">
+            <div class="episode-grade-scale">
+              <span>0.00</span>
+              <span>1.00</span>
+            </div>
+            <div class="episode-grade-track">
+              <div class="episode-grade-fill" id="episodeGradeFill"></div>
+            </div>
+          </div>
+          <div class="episode-grade-breakdown">
+            <div class="episode-grade-metric">
+              <span class="episode-grade-metric-label">Pipeline</span>
+              <span class="episode-grade-metric-value" id="episodeGradeCompleteness">--</span>
+            </div>
+            <div class="episode-grade-metric">
+              <span class="episode-grade-metric-label">Biology</span>
+              <span class="episode-grade-metric-value" id="episodeGradeBiology">--</span>
+            </div>
+            <div class="episode-grade-metric">
+              <span class="episode-grade-metric-label">Efficiency</span>
+              <span class="episode-grade-metric-value" id="episodeGradeEfficiency">--</span>
+            </div>
+          </div>
+          <div class="episode-grade-caption">
+            Step reward is dense training feedback; final grade is normalized evaluation.
+            Normalized grade shown here is the grade_episode score.
+          </div>
+        </div>
+      </div>
     </div>
     <div class="center-header">
       <div class="tab active">Agent Log</div>
@@ -79,75 +147,12 @@
     <div class="terminal" id="terminal"></div>
   </div>
 
-  <!-- Right Panel -->
-  <div class="right">
-    <div class="panel-section">
-      <div class="panel-heading">
-        Step Reward
-        <span id="stepRewardLabel" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);">--</span>
-      </div>
-      <div id="rewardBars">
-        <div class="reward-row"><span class="rw-label">Validity</span><div class="rw-track"><div class="rw-fill validity" id="rw-validity"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Ordering</span><div class="rw-track"><div class="rw-fill ordering" id="rw-ordering"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Info Gain</span><div class="rw-track"><div class="rw-fill info_gain" id="rw-info_gain"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Efficiency</span><div class="rw-track"><div class="rw-fill efficiency" id="rw-efficiency"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Novelty</span><div class="rw-track"><div class="rw-fill novelty" id="rw-novelty"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Penalty</span><div class="rw-track"><div class="rw-fill penalty" id="rw-penalty"></div></div></div>
-      </div>
-      <div class="cumulative-row">
-        <span class="cum-label">Cumulative Reward</span>
-        <span class="cum-value" id="cumReward">0.00</span>
-      </div>
-      <div class="episode-grade-card">
-        <div class="panel-heading">Final Episode Grade</div>
-        <div class="episode-grade-header">
-          <div class="episode-grade-meta">
-            <div class="episode-grade-status" id="episodeGradeStatus">Computed at episode end</div>
-            <div class="episode-grade-score" id="episodeGradeScore">--</div>
-            <div class="episode-grade-label" id="episodeGradeLabel">Awaiting terminal evaluation</div>
-          </div>
-          <div class="episode-grade-source" id="episodeGradeSource">grade_episode</div>
-        </div>
-        <div class="episode-grade-meter">
-          <div class="episode-grade-scale">
-            <span>0.00</span>
-            <span>1.00</span>
-          </div>
-          <div class="episode-grade-track">
-            <div class="episode-grade-fill" id="episodeGradeFill"></div>
-          </div>
-        </div>
-        <div class="episode-grade-breakdown">
-          <div class="episode-grade-metric">
-            <span class="episode-grade-metric-label">Pipeline</span>
-            <span class="episode-grade-metric-value" id="episodeGradeCompleteness">--</span>
-          </div>
-          <div class="episode-grade-metric">
-            <span class="episode-grade-metric-label">Biology</span>
-            <span class="episode-grade-metric-value" id="episodeGradeBiology">--</span>
-          </div>
-          <div class="episode-grade-metric">
-            <span class="episode-grade-metric-label">Efficiency</span>
-            <span class="episode-grade-metric-value" id="episodeGradeEfficiency">--</span>
-          </div>
-        </div>
-        <div class="episode-grade-caption">
-          Step reward is dense training feedback; final grade is normalized evaluation.
-          Normalized grade shown here is the grade_episode score.
-        </div>
-      </div>
-    </div>
-    <div class="panel-section">
-      <div class="panel-heading">Reward History</div>
-      <div id="rewardHistory"></div>
-    </div>
-    <div class="panel-section">
-      <div class="panel-heading">Discoveries</div>
-      <div class="discovery-list" id="discoveries"></div>
-    </div>
-    <div class="panel-section">
-      <div class="panel-heading">Violations</div>
-      <div id="violations"></div>
+  <!-- Right: Virtual Lab -->
+  <div class="lab-column">
+    <div class="lab-panel">
+      <div class="lab-label">Virtual Lab</div>
+      <div class="lab-action-label" id="labActionLabel"></div>
+      <canvas id="labCanvas"></canvas>
     </div>
   </div>
 </div>
@@ -331,8 +336,8 @@ function drawLab() {
   // Floating terminal popup at computer
   if (agent.station === 'computer' && agent.working && terminalLines.length > 0) {
     const cp = stationPos('computer');
-    const sx = cp.x + 55, sy = cp.y - 65;
-    const sw = 170, sh = 95;
+    const sw = 150, sh = 90;
+    const sx = cp.x - sw - 20, sy = cp.y - sh / 2;
 
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
@@ -373,8 +378,8 @@ function drawLab() {
   // Whiteboard popup
   if (agent.station === 'whiteboard' && agent.working) {
     const wp = stationPos('whiteboard');
-    const bx = wp.x - 60, by = wp.y - 75;
     const bw = 120, bh = 72;
+    const bx = wp.x - bw / 2, by = wp.y - bh - 45;
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     roundRect(ctx, bx + 3, by + 3, bw, bh, 6);
     ctx.fill();

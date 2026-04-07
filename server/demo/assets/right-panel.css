@@ -1,12 +1,10 @@
 /* ---- Right Panel ---- */
-.right {
+.lab-column {
   background: var(--bg-surface);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  overflow: hidden;
 }
 .panel-section {
   padding: 16px;
@@ -55,7 +53,7 @@
   font-family: 'JetBrains Mono', monospace; color: var(--green);
 }
 .episode-grade-card {
-  margin-top: 14px;
+  margin-top: 0;
   padding: 12px;
   border-radius: 12px;
   border: 1px solid var(--border);
