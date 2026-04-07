@@ -57,7 +57,7 @@
   padding: 12px;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(15, 23, 42, 0.72));
+  background: var(--bg-raised);
 }
 .episode-grade-header {
   display: flex;
