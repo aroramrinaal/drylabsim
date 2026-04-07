@@ -1,14 +1,17 @@
 ---
 title: DryLabSim Server
 sdk: docker
-pinned: false
+pinned: true
 app_port: 8000
 base_path: /demo
 tags:
-  - openenv
-  - RL Environment
-  - bioinformatics
-  - computational biology
+- openenv
+- RL Environment
+- bioinformatics
+- computational biology
+colorFrom: green
+colorTo: green
+short_description: RL environment where LLM agents plan step-by-step bioinforma
 ---
 
 # DryLabSim
