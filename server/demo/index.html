@@ -533,7 +533,9 @@
   </div>
 </div>
 
-<script src="./assets/episode-data.js"></script>
+<script src="/demo/assets/episode-data.js"></script>
+<script src="/demo/assets/lab-config.js"></script>
+<script src="/demo/assets/lab-commands.js"></script>
 <script>
 // =====================================================
 // VIRTUAL LAB - Canvas rendering
@@ -541,6 +543,8 @@
 const labCanvas = document.getElementById('labCanvas');
 const ctx = labCanvas.getContext('2d');
 let labW, labH, dpr;
+const { stations: STATIONS, actionStation: ACTION_STATION } = window.DRYLABSIM_LAB_CONFIG;
+const COMP_COMMANDS = window.DRYLABSIM_LAB_COMMANDS;
 
 function resizeLab() {
   const rect = labCanvas.parentElement.getBoundingClientRect();
@@ -553,33 +557,6 @@ function resizeLab() {
 }
 resizeLab();
 window.addEventListener('resize', () => { resizeLab(); });
-
-// Lab stations (positions as fractions of canvas, converted in draw)
-const STATIONS = {
-  idle:       { fx: 0.06, fy: 0.55, label: 'ENTRANCE',       icon: 'door',    color: '#475569' },
-  sample:     { fx: 0.20, fy: 0.35, label: 'SAMPLE BENCH',   icon: 'bench',   color: '#34d399' },
-  cohort:     { fx: 0.20, fy: 0.75, label: 'COHORT SELECT',  icon: 'people',  color: '#34d399' },
-  prep:       { fx: 0.38, fy: 0.35, label: 'LIBRARY PREP',   icon: 'flask',   color: '#2dd4bf' },
-  sequencer:  { fx: 0.38, fy: 0.75, label: 'SEQUENCER',      icon: 'machine', color: '#22d3ee' },
-  computer:   { fx: 0.62, fy: 0.50, label: 'COMPUTE',        icon: 'screen',  color: '#38bdf8' },
-  whiteboard: { fx: 0.84, fy: 0.45, label: 'SYNTHESIS',      icon: 'board',   color: '#a78bfa' },
-};
-
-// Map actions to stations
-const ACTION_STATION = {
-  collect_sample: 'sample',
-  select_cohort: 'cohort',
-  prepare_library: 'prep',
-  sequence_cells: 'sequencer',
-  run_qc: 'computer',
-  normalize_data: 'computer',
-  cluster_cells: 'computer',
-  differential_expression: 'computer',
-  pathway_enrichment: 'computer',
-  marker_selection: 'computer',
-  validate_marker: 'computer',
-  synthesize_conclusion: 'whiteboard',
-};
 
 // Agent state
 let agent = { x: 0, y: 0, targetX: 0, targetY: 0, station: 'idle', working: false };
@@ -626,16 +603,6 @@ function setAgentWorking(actionName) {
     typeComputerLines(actionName);
   }
 }
-
-const COMP_COMMANDS = {
-  run_qc:                  ['$ scanpy.pp.filter_cells()', '  filtering 11847 cells...', '  10234 passed QC', '  doublet rate: 3.2%'],
-  normalize_data:          ['$ scran.normalize(adata)', '  computing size factors...', '  log1p transform', '  HVGs: 3000 selected'],
-  cluster_cells:           ['$ sc.tl.leiden(adata, 0.8)', '  building kNN graph...', '  optimizing modularity', '  14 clusters found'],
-  differential_expression: ['$ DESeq2.run(IPF, Ctrl)', '  fitting GLM...', '  1847 DE genes', '  SPP1 log2FC=3.42 ***'],
-  pathway_enrichment:      ['$ gseapy.enrich(de_genes)', '  KEGG + Reactome...', '  ECM-receptor p=4.2e-12', '  TGF-beta p=1.8e-09'],
-  marker_selection:        ['$ rank_markers(candidates)', '  SPP1  AUROC: 0.94', '  MMP7  AUROC: 0.87', '  COL1A1 AUROC: 0.81'],
-  validate_marker:         ['$ cross_validate("SPP1")', '  fold 1: 0.93', '  fold 2: 0.89', '  mean AUROC: 0.91 OK'],
-};
 
 async function typeComputerLines(actionName) {
   const lines = COMP_COMMANDS[actionName] || ['$ processing...', '  computing...', '  done'];
