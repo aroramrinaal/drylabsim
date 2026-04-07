@@ -2,17 +2,17 @@
 Deterministic baseline inference script for the DryLabSim RL environment.
 =========================================================================
 
-This baseline intentionally avoids proxy-grading. The environment computes the
-canonical final score server-side via grade_episode(obs, latent) and exposes it
-in terminal observation metadata.
+This baseline uses the OpenAI client for action selection at each step. The
+environment computes the canonical final score server-side via
+grade_episode(obs, latent) and exposes it in terminal observation metadata.
 
 MANDATORY env vars typically used by the hackathon harness:
-    ENV_URL        The base URL of the deployed environment server.
+    API_BASE_URL   The API endpoint for the LLM.
+    MODEL_NAME     The model identifier to use for inference.
+    HF_TOKEN       Your Hugging Face / API key.
 
-Optional env vars kept for compatibility with sample scripts:
-    API_BASE_URL   Unused by this deterministic baseline.
-    MODEL_NAME     Label only, used in stdout logs.
-    HF_TOKEN       Unused by this deterministic baseline.
+Environment-specific extra variable for this HTTP-served RL environment:
+    ENV_URL        The base URL of the deployed environment server.
 
 STDOUT FORMAT (mandatory — automated grader parses these lines):
     [START] task=<task_name> env=drylabsim model=<model_name>
@@ -36,7 +36,7 @@ from openai import OpenAI
 # ---------------------------------------------------------------------------
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY", "")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 ENV_URL = os.getenv("ENV_URL", "http://localhost:8000").rstrip("/")
 
