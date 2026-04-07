@@ -1,4 +1,5 @@
 window.DRYLABSIM_LAB_COMMANDS = {
+  fallback: ['$ processing...', '  computing...', '  done'],
   run_qc:                  ['$ scanpy.pp.filter_cells()', '  filtering 11847 cells...', '  10234 passed QC', '  doublet rate: 3.2%'],
   normalize_data:          ['$ scran.normalize(adata)', '  computing size factors...', '  log1p transform', '  HVGs: 3000 selected'],
   cluster_cells:           ['$ sc.tl.leiden(adata, 0.8)', '  building kNN graph...', '  optimizing modularity', '  14 clusters found'],

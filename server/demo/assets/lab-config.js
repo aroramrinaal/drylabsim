@@ -22,4 +22,7 @@ window.DRYLABSIM_LAB_CONFIG = {
     validate_marker: 'computer',
     synthesize_conclusion: 'whiteboard',
   },
+  primaryWalkPath: ['idle', 'sample', 'prep', 'computer', 'whiteboard'],
+  secondaryWalkPath: ['idle', 'cohort', 'sequencer', 'computer'],
+  sampleTubeColors: ['#34d399', '#22d3ee', '#fbbf24', '#f472b6', '#34d399', '#22d3ee'],
 };

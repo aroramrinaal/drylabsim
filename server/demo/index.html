@@ -536,6 +536,8 @@
 <script src="/demo/assets/episode-data.js"></script>
 <script src="/demo/assets/lab-config.js"></script>
 <script src="/demo/assets/lab-commands.js"></script>
+<script src="/demo/assets/lab-ui-text.js"></script>
+<script src="/demo/assets/lab-theme.js"></script>
 <script>
 // =====================================================
 // VIRTUAL LAB - Canvas rendering
@@ -543,8 +545,21 @@
 const labCanvas = document.getElementById('labCanvas');
 const ctx = labCanvas.getContext('2d');
 let labW, labH, dpr;
-const { stations: STATIONS, actionStation: ACTION_STATION } = window.DRYLABSIM_LAB_CONFIG;
+const {
+  stations: STATIONS,
+  actionStation: ACTION_STATION,
+  primaryWalkPath: PRIMARY_WALK_PATH,
+  secondaryWalkPath: SECONDARY_WALK_PATH,
+  sampleTubeColors: SAMPLE_TUBE_COLORS,
+} = window.DRYLABSIM_LAB_CONFIG;
 const COMP_COMMANDS = window.DRYLABSIM_LAB_COMMANDS;
+const { activityText: ACTIVITY_TEXT, synthLines: SYNTH_LINES } = window.DRYLABSIM_LAB_UI_TEXT;
+const {
+  floorColor: FLOOR_COLOR,
+  wallColor: WALL_COLOR,
+  floorTileA: FLOOR_TILE_A,
+  floorTileB: FLOOR_TILE_B,
+} = window.DRYLABSIM_LAB_THEME;
 
 function resizeLab() {
   const rect = labCanvas.parentElement.getBoundingClientRect();
@@ -605,7 +620,7 @@ function setAgentWorking(actionName) {
 }
 
 async function typeComputerLines(actionName) {
-  const lines = COMP_COMMANDS[actionName] || ['$ processing...', '  computing...', '  done'];
+  const lines = COMP_COMMANDS[actionName] || COMP_COMMANDS.fallback;
   for (let i = 0; i < lines.length; i++) {
     await wait(250);
     terminalLines.push(lines[i]);
@@ -630,14 +645,12 @@ function spawnParticles(x, y, color, count = 8) {
 
 // ---- Draw loop ----
 let frameCount = 0;
-const FLOOR_COLOR = '#0f1520';
-const WALL_COLOR = '#1a2332';
-const FLOOR_TILE_A = '#0d1219';
-const FLOOR_TILE_B = '#10161f';
 
 function drawLab() {
   frameCount++;
   ctx.clearRect(0, 0, labW, labH);
+  ctx.fillStyle = FLOOR_COLOR;
+  ctx.fillRect(0, 0, labW, labH);
 
   // Floor - checkerboard tiles
   const tileSize = 24;
@@ -669,24 +682,23 @@ function drawLab() {
   ctx.lineWidth = 16;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  const pathOrder = ['idle','sample','prep','computer','whiteboard'];
   ctx.beginPath();
-  const p0 = stationPos(pathOrder[0]);
+  const p0 = stationPos(PRIMARY_WALK_PATH[0]);
   ctx.moveTo(p0.x, p0.y + 10);
-  for (let i = 1; i < pathOrder.length; i++) {
-    const p = stationPos(pathOrder[i]);
+  for (let i = 1; i < PRIMARY_WALK_PATH.length; i++) {
+    const p = stationPos(PRIMARY_WALK_PATH[i]);
     ctx.lineTo(p.x, p.y + 10);
   }
   ctx.stroke();
   // Lower path
   ctx.beginPath();
-  const pl0 = stationPos('idle');
+  const pl0 = stationPos(SECONDARY_WALK_PATH[0]);
   ctx.moveTo(pl0.x, pl0.y + 10);
-  const pl1 = stationPos('cohort');
+  const pl1 = stationPos(SECONDARY_WALK_PATH[1]);
   ctx.lineTo(pl1.x, pl1.y + 10);
-  const pl2 = stationPos('sequencer');
+  const pl2 = stationPos(SECONDARY_WALK_PATH[2]);
   ctx.lineTo(pl2.x, pl2.y + 10);
-  const pl3 = stationPos('computer');
+  const pl3 = stationPos(SECONDARY_WALK_PATH[3]);
   ctx.lineTo(pl3.x, pl3.y + 10);
   ctx.stroke();
   ctx.lineCap = 'butt';
@@ -751,27 +763,21 @@ function drawLab() {
     ctx.fillStyle = '#a78bfa';
     ctx.fillText('CONCLUSION', bx + 8, by + 14);
     ctx.font = '400 7.5px JetBrains Mono, monospace';
-    const synthLines = ['SPP1 validated', 'AUROC = 0.91', 'Confidence: 0.85', 'Match: 4/5'];
-    for (let i = 0; i < synthLines.length; i++) {
+    for (let i = 0; i < SYNTH_LINES.length; i++) {
       ctx.fillStyle = i === 0 ? '#34d399' : '#94a3b8';
-      ctx.fillText(synthLines[i], bx + 8, by + 28 + i * 12);
+      ctx.fillText(SYNTH_LINES[i], bx + 8, by + 28 + i * 12);
     }
   }
 
   // Activity text above active station
   if (agent.working && activeStationKey && activeStationKey !== 'idle') {
     const sp = stationPos(activeStationKey);
-    const actTexts = {
-      sample: 'collecting tissue...', cohort: 'selecting cohort...',
-      prep: 'preparing library...', sequencer: 'sequencing...',
-      computer: 'computing...', whiteboard: 'synthesizing...',
-    };
     ctx.fillStyle = STATIONS[activeStationKey].color;
     ctx.font = '500 9px JetBrains Mono, monospace';
     ctx.textAlign = 'center';
     ctx.globalAlpha = 0.5 + 0.3 * Math.sin(frameCount * 0.06);
     const yOff = ['sample','prep'].includes(activeStationKey) ? -55 : -50;
-    ctx.fillText(actTexts[activeStationKey] || 'working...', sp.x, sp.y + yOff);
+    ctx.fillText(ACTIVITY_TEXT[activeStationKey] || 'working...', sp.x, sp.y + yOff);
     ctx.globalAlpha = 1;
   }
 
@@ -1004,15 +1010,14 @@ function drawEquipment(stationKey, cx, cy, color, active) {
       ctx.fillStyle = '#253040';
       ctx.fillRect(cx - 18, cy - 18, 36, 10);
       // Test tubes
-      const tubeColors = ['#34d399', '#22d3ee', '#fbbf24', '#f472b6', '#34d399', '#22d3ee'];
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < SAMPLE_TUBE_COLORS.length; i++) {
         const tx = cx - 14 + i * 6;
-        ctx.fillStyle = active ? tubeColors[i] : '#334155';
+        ctx.fillStyle = active ? SAMPLE_TUBE_COLORS[i] : '#334155';
         ctx.globalAlpha = active ? 0.7 : 0.4;
         ctx.fillRect(tx, cy - 28, 4, 12);
         // Tube caps
         ctx.globalAlpha = 1;
-        ctx.fillStyle = active ? tubeColors[i] : '#475569';
+        ctx.fillStyle = active ? SAMPLE_TUBE_COLORS[i] : '#475569';
         ctx.fillRect(tx - 0.5, cy - 29, 5, 2);
       }
       ctx.globalAlpha = 1;
