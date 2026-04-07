@@ -48,11 +48,13 @@ class Scenario:
 from .scenario_library.cardiac_disease_de import cardiac_disease_de
 from .scenario_library.hematopoiesis_trajectory import hematopoiesis_trajectory
 from .scenario_library.perturbation_immune import perturbation_immune
-from .scenario_library.biomarker_validation_lung import biomarker_validation_lung
+from .scenario_library.venetoclax_resistance_multiclone import (
+    venetoclax_resistance_multiclone,
+)
 
 SCENARIO_LIBRARY: List[Scenario] = [
     cardiac_disease_de(),
     hematopoiesis_trajectory(),
     perturbation_immune(),
-    biomarker_validation_lung(),
+    venetoclax_resistance_multiclone(),
 ]

@@ -1,5 +1,5 @@
 window.DRYLABSIM_LAB_UI_TEXT = {
-  synthLines: ['SPP1 validated', 'AUROC = 0.91', 'Confidence: 0.85', 'Match: 4/5'],
+  synthLines: ['2 resistant clones', 'MCL1 + STAT5', 'Confidence: 0.72', 'Bulk DE misled'],
   activityText: {
     sample: 'collecting tissue...',
     cohort: 'selecting cohort...',
