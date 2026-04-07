@@ -17,15 +17,16 @@
 
 <!-- Top Bar -->
 <div class="topbar">
+  <button class="topbar-btn btn-primary" id="runBtn" onclick="startDemo()">Run Episode</button>
+  <button class="topbar-btn btn-ghost" id="resetBtn" onclick="resetDemo()">Reset</button>
+  <div class="topbar-sep"></div>
   <div class="topbar-logo">DryLabSim</div>
   <div class="topbar-sep"></div>
-  <div class="topbar-env">venetoclax_resistance_multiclone</div>
+  <div class="topbar-env">AML Resistance · Expert</div>
   <div class="topbar-status">
     <div class="status-dot" id="statusDot"></div>
     <span id="statusText">Ready</span>
   </div>
-  <button class="topbar-btn btn-ghost" id="resetBtn" onclick="resetDemo()">Reset</button>
-  <button class="topbar-btn btn-primary" id="runBtn" onclick="startDemo()">Run Episode</button>
 </div>
 
 <div class="main">
@@ -59,18 +60,85 @@
         <div class="gauge-track"><div class="gauge-fill" id="stepFill" style="width:0%;background:var(--accent);"></div></div>
       </div>
     </div>
-    <div class="sidebar-section" style="flex:1;overflow-y:auto;">
+    <div class="sidebar-section">
       <div class="sidebar-heading">Pipeline</div>
       <div class="pipeline-steps" id="pipelineSteps"></div>
     </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Reward History</div>
+      <div id="rewardHistory"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Discoveries</div>
+      <div class="discovery-list" id="discoveries"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Violations</div>
+      <div id="violations"></div>
+    </div>
   </div>
 
-  <!-- Center: Lab + Terminal -->
+  <!-- Center: Metrics + Terminal -->
   <div class="center">
-    <div class="lab-panel">
-      <div class="lab-label">Virtual Lab</div>
-      <div class="lab-action-label" id="labActionLabel"></div>
-      <canvas id="labCanvas"></canvas>
+    <div class="metrics-panel">
+      <div class="metrics-col">
+        <div class="panel-heading">
+          Step Reward
+          <span id="stepRewardLabel" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);">--</span>
+        </div>
+        <div id="rewardBars">
+          <div class="reward-row"><span class="rw-label">Validity</span><div class="rw-track"><div class="rw-fill validity" id="rw-validity"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Ordering</span><div class="rw-track"><div class="rw-fill ordering" id="rw-ordering"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Info Gain</span><div class="rw-track"><div class="rw-fill info_gain" id="rw-info_gain"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Efficiency</span><div class="rw-track"><div class="rw-fill efficiency" id="rw-efficiency"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Novelty</span><div class="rw-track"><div class="rw-fill novelty" id="rw-novelty"></div></div></div>
+          <div class="reward-row"><span class="rw-label">Penalty</span><div class="rw-track"><div class="rw-fill penalty" id="rw-penalty"></div></div></div>
+        </div>
+        <div class="cumulative-row">
+          <span class="cum-label">Cumulative Reward</span>
+          <span class="cum-value" id="cumReward">0.00</span>
+        </div>
+      </div>
+      <div class="metrics-col">
+        <div class="episode-grade-card">
+          <div class="panel-heading">Final Episode Grade</div>
+          <div class="episode-grade-header">
+            <div class="episode-grade-meta">
+              <div class="episode-grade-status" id="episodeGradeStatus">Computed at episode end</div>
+              <div class="episode-grade-score" id="episodeGradeScore">--</div>
+              <div class="episode-grade-label" id="episodeGradeLabel">Awaiting terminal evaluation</div>
+            </div>
+            <div class="episode-grade-source" id="episodeGradeSource">grade_episode</div>
+          </div>
+          <div class="episode-grade-meter">
+            <div class="episode-grade-scale">
+              <span>0.00</span>
+              <span>1.00</span>
+            </div>
+            <div class="episode-grade-track">
+              <div class="episode-grade-fill" id="episodeGradeFill"></div>
+            </div>
+          </div>
+          <div class="episode-grade-breakdown">
+            <div class="episode-grade-metric">
+              <span class="episode-grade-metric-label">Pipeline</span>
+              <span class="episode-grade-metric-value" id="episodeGradeCompleteness">--</span>
+            </div>
+            <div class="episode-grade-metric">
+              <span class="episode-grade-metric-label">Biology</span>
+              <span class="episode-grade-metric-value" id="episodeGradeBiology">--</span>
+            </div>
+            <div class="episode-grade-metric">
+              <span class="episode-grade-metric-label">Efficiency</span>
+              <span class="episode-grade-metric-value" id="episodeGradeEfficiency">--</span>
+            </div>
+          </div>
+          <div class="episode-grade-caption">
+            Step reward is dense training feedback; final grade is normalized evaluation.
+            Normalized grade shown here is the grade_episode score.
+          </div>
+        </div>
+      </div>
     </div>
     <div class="center-header">
       <div class="tab active">Agent Log</div>
@@ -79,37 +147,12 @@
     <div class="terminal" id="terminal"></div>
   </div>
 
-  <!-- Right Panel -->
-  <div class="right">
-    <div class="panel-section">
-      <div class="panel-heading">
-        Step Reward
-        <span id="stepRewardLabel" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);">--</span>
-      </div>
-      <div id="rewardBars">
-        <div class="reward-row"><span class="rw-label">Validity</span><div class="rw-track"><div class="rw-fill validity" id="rw-validity"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Ordering</span><div class="rw-track"><div class="rw-fill ordering" id="rw-ordering"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Info Gain</span><div class="rw-track"><div class="rw-fill info_gain" id="rw-info_gain"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Efficiency</span><div class="rw-track"><div class="rw-fill efficiency" id="rw-efficiency"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Novelty</span><div class="rw-track"><div class="rw-fill novelty" id="rw-novelty"></div></div></div>
-        <div class="reward-row"><span class="rw-label">Penalty</span><div class="rw-track"><div class="rw-fill penalty" id="rw-penalty"></div></div></div>
-      </div>
-      <div class="cumulative-row">
-        <span class="cum-label">Cumulative Reward</span>
-        <span class="cum-value" id="cumReward">0.00</span>
-      </div>
-    </div>
-    <div class="panel-section">
-      <div class="panel-heading">Reward History</div>
-      <div id="rewardHistory"></div>
-    </div>
-    <div class="panel-section">
-      <div class="panel-heading">Discoveries</div>
-      <div class="discovery-list" id="discoveries"></div>
-    </div>
-    <div class="panel-section">
-      <div class="panel-heading">Violations</div>
-      <div id="violations"></div>
+  <!-- Right: Virtual Lab -->
+  <div class="lab-column">
+    <div class="lab-header">Virtual Lab</div>
+    <div class="lab-panel">
+      <div class="lab-action-label" id="labActionLabel"></div>
+      <canvas id="labCanvas"></canvas>
     </div>
   </div>
 </div>
@@ -146,6 +189,7 @@ const {
   floorTileA: FLOOR_TILE_A,
   floorTileB: FLOOR_TILE_B,
 } = window.DRYLABSIM_LAB_THEME;
+const FINAL_GRADE = window.DRYLABSIM_FINAL_GRADE || null;
 
 function resizeLab() {
   const rect = labCanvas.parentElement.getBoundingClientRect();
@@ -248,13 +292,9 @@ function drawLab() {
     }
   }
 
-  // Walls - top and bottom border
+  // Bottom border wall strip
   ctx.fillStyle = WALL_COLOR;
-  ctx.fillRect(0, 0, labW, 18);
   ctx.fillRect(0, labH - 8, labW, 8);
-  ctx.strokeStyle = '#253040';
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(0, 18); ctx.lineTo(labW, 18); ctx.stroke();
 
   // Draw equipment at each station (behind the person)
   for (const [key, s] of Object.entries(STATIONS)) {
@@ -292,8 +332,8 @@ function drawLab() {
   // Floating terminal popup at computer
   if (agent.station === 'computer' && agent.working && terminalLines.length > 0) {
     const cp = stationPos('computer');
-    const sx = cp.x + 55, sy = cp.y - 65;
-    const sw = 170, sh = 95;
+    const sw = 150, sh = 90;
+    const sx = cp.x - sw - 20, sy = cp.y - sh / 2;
 
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
@@ -334,8 +374,8 @@ function drawLab() {
   // Whiteboard popup
   if (agent.station === 'whiteboard' && agent.working) {
     const wp = stationPos('whiteboard');
-    const bx = wp.x - 60, by = wp.y - 75;
     const bw = 120, bh = 72;
+    const bx = wp.x - bw / 2, by = wp.y - bh - 45;
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     roundRect(ctx, bx + 3, by + 3, bw, bh, 6);
     ctx.fill();
@@ -887,6 +927,7 @@ const SCENARIO_CATALOG = window.DRYLABSIM_SCENARIO_CATALOG;
 
 // State
 let running = false;
+let episodeId = 0;
 let cumReward = 0;
 
 // DOM refs
@@ -964,6 +1005,37 @@ function clearRewardBars() {
   }
 }
 
+function setFinalGradePending() {
+  document.getElementById('episodeGradeStatus').textContent = 'Computed at episode end';
+  document.getElementById('episodeGradeScore').textContent = '--';
+  document.getElementById('episodeGradeLabel').textContent = 'Awaiting terminal evaluation';
+  document.getElementById('episodeGradeSource').textContent = 'grade_episode';
+  document.getElementById('episodeGradeFill').style.width = '0%';
+  document.getElementById('episodeGradeCompleteness').textContent = '--';
+  document.getElementById('episodeGradeBiology').textContent = '--';
+  document.getElementById('episodeGradeEfficiency').textContent = '--';
+}
+
+function renderFinalGradeCard(grade) {
+  if (!grade) {
+    setFinalGradePending();
+    return;
+  }
+  const score = Math.max(0, Math.min(1, grade.score ?? 0));
+  document.getElementById('episodeGradeStatus').textContent = 'Terminal evaluation complete';
+  document.getElementById('episodeGradeScore').textContent = score.toFixed(2);
+  document.getElementById('episodeGradeLabel').textContent = grade.label || 'Normalized episode score';
+  document.getElementById('episodeGradeSource').textContent = grade.source || 'grade_episode';
+  document.getElementById('episodeGradeFill').style.width = (score * 100) + '%';
+  document.getElementById('episodeGradeCompleteness').textContent = (grade.completeness ?? 0).toFixed(2);
+  document.getElementById('episodeGradeBiology').textContent = (grade.biology_score ?? 0).toFixed(2);
+  document.getElementById('episodeGradeEfficiency').textContent = (grade.efficiency_score ?? 0).toFixed(2);
+}
+
+function resetFinalGradeCard() {
+  setFinalGradePending();
+}
+
 function addPipeStep(step, index) {
   const el = document.createElement('div');
   el.className = 'pipe-step';
@@ -1007,6 +1079,7 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function startDemo() {
   if (running) return;
   running = true;
+  const myId = ++episodeId;
   runBtn.disabled = true;
   runBtn.textContent = DEMO_COPY.buttons.running;
   statusDot.classList.add('live');
@@ -1015,25 +1088,30 @@ async function startDemo() {
   cumReward = 0;
   resetSidebarPanels();
   clearRewardBars();
+  resetFinalGradeCard();
   applyDefaultUiState();
   initAgent();
 
   addLine(DEMO_COPY.introLines[0]);
-  await wait(500);
+  await wait(500); if (episodeId !== myId) return;
   addLine(DEMO_COPY.introLines[1]);
-  await wait(200);
+  await wait(200); if (episodeId !== myId) return;
   addLine(DEMO_COPY.introLines[2]);
-  await wait(200);
+  await wait(200); if (episodeId !== myId) return;
   addLine(DEMO_COPY.introLines[3]);
-  await wait(200);
+  await wait(200); if (episodeId !== myId) return;
   addLine(DEMO_COPY.introLines[4]);
-  await wait(400);
+  await wait(400); if (episodeId !== myId) return;
   addLine('');
 
   for (let i = 0; i < EPISODE.length; i++) {
-    await runStep(i);
+    if (episodeId !== myId) return;
+    await runStep(i, myId);
+    if (episodeId !== myId) return;
     await wait(500);
   }
+
+  if (episodeId !== myId) return;
 
   // Done
   moveAgentTo('idle');
@@ -1041,6 +1119,9 @@ async function startDemo() {
   addLine('');
   addLine(DEMO_COPY.completionLines[0]);
   addLine(formatTemplate(DEMO_COPY.completionLines[1], { cumReward: cumReward.toFixed(2), stepCount: EPISODE.length }));
+  if (FINAL_GRADE) {
+    addLine(`final_episode_grade: <span class="t-ok">${FINAL_GRADE.score.toFixed(2)}</span> <span class="t-dim">(${FINAL_GRADE.source || 'grade_episode'})</span>`);
+  }
   addLine(DEMO_COPY.completionLines[2]);
   addLine(DEMO_COPY.completionLines[3]);
 
@@ -1051,7 +1132,7 @@ async function startDemo() {
   running = false;
 }
 
-async function runStep(i) {
+async function runStep(i, myId) {
   const step = EPISODE[i];
   const station = ACTION_STATION[step.action] || 'computer';
 
@@ -1060,6 +1141,7 @@ async function runStep(i) {
   labActionLabel.textContent = step.action + '()';
   labActionLabel.classList.add('visible');
   await wait(800); // wait for agent to travel
+  if (episodeId !== myId) return;
 
   // Start working animation
   setAgentWorking(step.action);
@@ -1087,11 +1169,15 @@ async function runStep(i) {
     : '<span class="t-kw">META</span>';
   addLine(`<span class="t-dim">Step ${i + 1}</span>  ${catTag}  <span class="t-fn">${step.action}</span>(<span class="t-str">${step.params}</span>)`);
   await wait(300);
+  if (episodeId !== myId) return;
 
   for (const line of step.output) {
+    if (episodeId !== myId) return;
     addLine('  <span class="t-sub">' + line + '</span>');
     await wait(80);
   }
+
+  if (episodeId !== myId) return;
 
   // Reward
   cumReward += step.total;
@@ -1113,6 +1199,7 @@ async function runStep(i) {
   spawnParticles(agent.targetX, agent.targetY, '#34d399', 6);
 
   if (step.terminal) {
+    renderFinalGradeCard(FINAL_GRADE);
     pipeEl.classList.remove('active');
     pipeEl.classList.add('done');
     pipeEl.querySelector('.step-icon').innerHTML = '&#10003;';
@@ -1120,14 +1207,18 @@ async function runStep(i) {
 }
 
 function resetDemo() {
-  if (running) return;
+  episodeId++;       // cancels any in-flight episode
+  running = false;
+  runBtn.disabled = false;
+  runBtn.textContent = DEMO_COPY.buttons.run;
+  statusDot.classList.remove('live');
+  statusText.textContent = DEMO_COPY.status.ready;
   terminalEl.innerHTML = '';
   cumReward = 0;
   resetSidebarPanels();
   clearRewardBars();
+  resetFinalGradeCard();
   applyDefaultUiState();
-  statusDot.classList.remove('live');
-  statusText.textContent = DEMO_COPY.status.ready;
   labActionLabel.classList.remove('visible');
   initAgent();
   addLine(DEMO_COPY.resetLine);
@@ -1137,6 +1228,7 @@ function resetDemo() {
 renderScenarioOptions();
 resetSidebarPanels();
 applyDefaultUiState();
+resetFinalGradeCard();
 statusText.textContent = DEMO_COPY.status.ready;
 runBtn.textContent = DEMO_COPY.buttons.run;
 for (const line of DEMO_COPY.initialLines) addLine(line);

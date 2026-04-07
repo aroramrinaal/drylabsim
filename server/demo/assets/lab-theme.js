@@ -1,6 +1,6 @@
 window.DRYLABSIM_LAB_THEME = {
-  floorColor: '#0f1520',
-  wallColor: '#1a2332',
-  floorTileA: '#0d1219',
-  floorTileB: '#10161f',
+  floorColor: '#000000',
+  wallColor: '#111111',
+  floorTileA: '#060606',
+  floorTileB: '#0c0c0c',
 };
