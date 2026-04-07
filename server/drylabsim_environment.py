@@ -25,6 +25,7 @@ try:
         TaskSpec,
     )
     from .rewards.reward import RewardBreakdown, RewardComputer
+    from .grader.grade import grade_episode
     from .rules.engine import RuleEngine
     from .simulator.latent_state import FullLatentState
     from .simulator.noise import NoiseModel
@@ -46,6 +47,7 @@ except ImportError:  # pragma: no cover - direct module import path
         TaskSpec,
     )
     from server.rewards.reward import RewardBreakdown, RewardComputer
+    from server.grader.grade import grade_episode
     from server.rules.engine import RuleEngine
     from server.simulator.latent_state import FullLatentState
     from server.simulator.noise import NoiseModel
@@ -58,6 +60,14 @@ except ImportError:  # pragma: no cover - direct module import path
 
 
 MAX_STEPS = 30
+
+TASK_NAME_TO_SCENARIO = {
+    "easy": "cardiac_disease_de",
+    "medium": "hematopoiesis_trajectory",
+    "hard": "perturbation_immune",
+    "expert": "venetoclax_resistance_multiclone",
+}
+SCENARIO_TO_TASK_NAME = {value: key for key, value in TASK_NAME_TO_SCENARIO.items()}
 
 
 class BioExperimentEnvironment(Environment):
@@ -72,13 +82,21 @@ class BioExperimentEnvironment(Environment):
     def __init__(
         self,
         scenario_name: Optional[str] = None,
+        task_name: Optional[str] = None,
         *,
         domain_randomise: bool = True,
     ) -> None:
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._latent: Optional[FullLatentState] = None
         self._task: Optional[TaskSpec] = None
-        self._scenario_name = scenario_name
+        self._scenario_name = self._resolve_scenario_name(
+            task_name=task_name,
+            scenario_name=scenario_name,
+        )
+        self._task_name = self._resolve_task_name(
+            task_name=task_name,
+            scenario_name=self._scenario_name,
+        )
         self._noise = NoiseModel()
         self._engine = TransitionEngine(self._noise)
         self._rules = RuleEngine()
@@ -95,7 +113,23 @@ class BioExperimentEnvironment(Environment):
 
     # ── Environment interface ───────────────────────────────────────────
 
-    def reset(self, seed: Optional[int] = None) -> ExperimentObservation:
+    def reset(
+        self,
+        seed: Optional[int] = None,
+        task_name: Optional[str] = None,
+        scenario_name: Optional[str] = None,
+    ) -> ExperimentObservation:
+        resolved_scenario_name = self._resolve_scenario_name(
+            task_name=task_name,
+            scenario_name=scenario_name,
+        )
+        if resolved_scenario_name is not None:
+            self._scenario_name = resolved_scenario_name
+        self._task_name = self._resolve_task_name(
+            task_name=task_name,
+            scenario_name=self._scenario_name,
+        )
+
         seed = seed if seed is not None else hash(uuid4()) % (2**31)
         self._noise.reseed(seed)
         self._state = State(episode_id=str(uuid4()), step_count=0)
@@ -191,7 +225,7 @@ class BioExperimentEnvironment(Environment):
         breakdown = step_rb.to_dict()
         breakdown.update({f"term_{k}": v for k, v in terminal_rb.to_dict().items()})
 
-        return self._build_observation(
+        observation = self._build_observation(
             reward=total_reward,
             done=done,
             latest_output=result.output,
@@ -200,6 +234,21 @@ class BioExperimentEnvironment(Environment):
             metadata_extra={"reward_breakdown": breakdown},
         )
 
+        if done:
+            grade_result = grade_episode(observation, self._latent)
+            observation.metadata.update(
+                {
+                    "score": grade_result.score,
+                    "completeness": grade_result.completeness,
+                    "biology_score": grade_result.biology_score,
+                    "efficiency_score": grade_result.efficiency_score,
+                    "grade_breakdown": grade_result.breakdown,
+                    "grade_source": "grade_episode",
+                }
+            )
+
+        return observation
+
     @property
     def state(self) -> State:
         return self._state
@@ -207,7 +256,26 @@ class BioExperimentEnvironment(Environment):
     def set_scenario(self, scenario_name: Optional[str]) -> None:
         """Set the scenario used on the next reset."""
 
-        self._scenario_name = scenario_name
+        self._scenario_name = self._resolve_scenario_name(
+            task_name=None,
+            scenario_name=scenario_name,
+        )
+        self._task_name = self._resolve_task_name(
+            task_name=None,
+            scenario_name=self._scenario_name,
+        )
+
+    def set_task(self, task_name: Optional[str]) -> None:
+        """Set a difficulty alias used on the next reset."""
+
+        self._scenario_name = self._resolve_scenario_name(
+            task_name=task_name,
+            scenario_name=None,
+        )
+        self._task_name = self._resolve_task_name(
+            task_name=task_name,
+            scenario_name=self._scenario_name,
+        )
 
     # ── internal helpers ────────────────────────────────────────────────
 
@@ -228,6 +296,8 @@ class BioExperimentEnvironment(Environment):
             "episode_id": self._state.episode_id,
             "step": self._state.step_count,
             "cumulative_reward": self._cumulative_reward,
+            "scenario_name": self._latent.scenario_name,
+            "task_name": self._task_name,
         }
         if metadata_extra:
             meta.update(metadata_extra)
@@ -266,6 +336,37 @@ class BioExperimentEnvironment(Environment):
         avg_unc = sum(o.uncertainty for o in recent) / len(recent)
         avg_qual = sum(o.quality_score for o in recent) / len(recent)
         return {"avg_uncertainty": avg_unc, "avg_quality": avg_qual}
+
+    def _resolve_scenario_name(
+        self,
+        *,
+        task_name: Optional[str],
+        scenario_name: Optional[str],
+    ) -> Optional[str]:
+        if scenario_name:
+            return scenario_name
+        if not task_name:
+            return None
+
+        resolved = TASK_NAME_TO_SCENARIO.get(task_name)
+        if resolved is None:
+            available = ", ".join(sorted(TASK_NAME_TO_SCENARIO))
+            raise ValueError(
+                f"Unknown task_name '{task_name}'. Available aliases: {available}"
+            )
+        return resolved
+
+    def _resolve_task_name(
+        self,
+        *,
+        task_name: Optional[str],
+        scenario_name: Optional[str],
+    ) -> Optional[str]:
+        if task_name:
+            return task_name
+        if not scenario_name:
+            return None
+        return SCENARIO_TO_TASK_NAME.get(scenario_name, scenario_name)
 
     def _update_discoveries(
         self, action: ExperimentAction, output: IntermediateOutput
