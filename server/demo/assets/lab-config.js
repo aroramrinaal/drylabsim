@@ -1,0 +1,28 @@
+window.DRYLABSIM_LAB_CONFIG = {
+  stations: {
+    idle:       { fx: 0.06, fy: 0.55, label: 'ENTRANCE',       icon: 'door',    color: '#475569' },
+    sample:     { fx: 0.20, fy: 0.35, label: 'SAMPLE BENCH',   icon: 'bench',   color: '#34d399' },
+    cohort:     { fx: 0.20, fy: 0.75, label: 'COHORT SELECT',  icon: 'people',  color: '#34d399' },
+    prep:       { fx: 0.38, fy: 0.35, label: 'LIBRARY PREP',   icon: 'flask',   color: '#2dd4bf' },
+    sequencer:  { fx: 0.38, fy: 0.75, label: 'SEQUENCER',      icon: 'machine', color: '#22d3ee' },
+    computer:   { fx: 0.62, fy: 0.50, label: 'COMPUTE',        icon: 'screen',  color: '#38bdf8' },
+    whiteboard: { fx: 0.84, fy: 0.45, label: 'SYNTHESIS',      icon: 'board',   color: '#a78bfa' },
+  },
+  actionStation: {
+    collect_sample: 'sample',
+    select_cohort: 'cohort',
+    prepare_library: 'prep',
+    sequence_cells: 'sequencer',
+    run_qc: 'computer',
+    normalize_data: 'computer',
+    cluster_cells: 'computer',
+    differential_expression: 'computer',
+    pathway_enrichment: 'computer',
+    marker_selection: 'computer',
+    validate_marker: 'computer',
+    synthesize_conclusion: 'whiteboard',
+  },
+  primaryWalkPath: ['idle', 'sample', 'prep', 'computer', 'whiteboard'],
+  secondaryWalkPath: ['idle', 'cohort', 'sequencer', 'computer'],
+  sampleTubeColors: ['#34d399', '#22d3ee', '#fbbf24', '#f472b6', '#34d399', '#22d3ee'],
+};
