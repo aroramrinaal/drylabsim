@@ -27,6 +27,9 @@ The core challenge is not just "get the right answer." The agent must:
 - avoid unsupported causal claims
 - synthesize a final conclusion that matches hidden biological ground truth
 
+<img width="1710" height="883" alt="Screenshot 2026-04-08 at 10 52 13 PM" src="https://github.com/user-attachments/assets/a8b571e4-d341-4d79-8aca-e9f35f285488" />
+
+
 The environment is graded deterministically with programmatic biology and pipeline scoring. There is no LLM judge in the final score loop.
 
 ## Task Difficulties
