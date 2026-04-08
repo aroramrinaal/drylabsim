@@ -326,7 +326,6 @@ def grade_from_obs(obs: dict) -> float:
 
 
 def recommend_next_action(task_name: str, pipeline_history: List[dict]) -> str:
-    completed = _completed_actions(pipeline_history)
     counts = _completed_action_counts(pipeline_history)
     for action_name in TASK_PIPELINES[task_name]:
         required_count = 2 if task_name == "expert" and action_name == "validate_marker" else 1

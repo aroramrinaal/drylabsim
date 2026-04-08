@@ -38,6 +38,31 @@ def _successful_action_counts(
     return counts
 
 
+def _successful_action_names(
+    pipeline_history: List["PipelineStepRecord"],
+) -> set[str]:
+    return {
+        step.action_type.value
+        for step in pipeline_history
+        if step.success
+    }
+
+
+def _validated_subpopulations(
+    pipeline_history: List["PipelineStepRecord"],
+) -> set[str]:
+    validated = set()
+    for step in pipeline_history:
+        if not step.success or step.action_type.value != "validate_marker":
+            continue
+        subpopulation_id = str(
+            step.parameters.get("subpopulation_id", "")
+        ).strip()
+        if subpopulation_id:
+            validated.add(subpopulation_id)
+    return validated
+
+
 def _extract_clonal_claims(
     conclusions: List["ConclusionClaim"],
 ) -> List["ClonalClaim"]:
@@ -107,7 +132,6 @@ def _distinct_clonal_mechanisms(clonal_claims: List["ClonalClaim"]) -> int:
 def _promotes_distractor_as_resistance(
     latent: "FullLatentState",
     clonal_claims: List["ClonalClaim"],
-    matched_truths: Dict[str, "ClonalClaim"],
 ) -> bool:
     non_resistant_truths = [
         truth
@@ -129,7 +153,7 @@ def _promotes_distractor_as_resistance(
         if mechanism:
             distractor_mechanisms.add(mechanism)
 
-    for truth_name, claim in matched_truths.items():
+    for claim in clonal_claims:
         claim_markers = _normalized_markers(claim.markers)
         claim_pathways = _normalized_pathways(claim.supporting_pathways)
         mechanism = claim.mechanism.strip().lower()
@@ -138,12 +162,6 @@ def _promotes_distractor_as_resistance(
         if len(claim_pathways & distractor_pathways) >= 1:
             return True
         if mechanism and mechanism in distractor_mechanisms:
-            return True
-
-        truth_markers = _normalized_markers(
-            latent.biology.clone_truth.get(truth_name, {}).get("markers", [])
-        )
-        if not (claim_markers & truth_markers):
             return True
 
     return False
@@ -160,7 +178,9 @@ def _apply_expert_terminal_caps(
     clonal_claims = _extract_clonal_claims(obs.conclusions)
     matched_truths = _matched_resistant_truths(latent, clonal_claims)
     action_counts = _successful_action_counts(obs.pipeline_history)
+    successful_actions = _successful_action_names(obs.pipeline_history)
     validation_count = action_counts.get("validate_marker", 0)
+    distinct_validated_subpopulations = _validated_subpopulations(obs.pipeline_history)
     cap = 1.0
     penalty = 0.0
     applied_caps: Dict[str, float] = {}
@@ -177,19 +197,28 @@ def _apply_expert_terminal_caps(
         cap = min(cap, 0.25)
         applied_caps["mechanism_diversity_cap"] = 0.25
 
-    if validation_count < _EXPERT_MIN_VALIDATIONS or not latent.progress.markers_validated:
+    if (
+        validation_count < _EXPERT_MIN_VALIDATIONS
+        or len(distinct_validated_subpopulations) < _EXPERT_MIN_VALIDATIONS
+    ):
         cap = min(cap, 0.20)
         applied_caps["validation_cap"] = 0.20
 
-    if latent.technical.batch_effects and not latent.progress.batches_integrated:
+    if (
+        latent.technical.batch_effects
+        and "integrate_batches" not in successful_actions
+    ):
         cap = min(cap, 0.20)
         applied_caps["batch_integration_cap"] = 0.20
 
-    if not latent.progress.trajectories_inferred or not latent.progress.networks_inferred:
+    if (
+        "trajectory_analysis" not in successful_actions
+        or "regulatory_network_inference" not in successful_actions
+    ):
         cap = min(cap, 0.15)
         applied_caps["branch_resolution_cap"] = 0.15
 
-    if _promotes_distractor_as_resistance(latent, clonal_claims, matched_truths):
+    if _promotes_distractor_as_resistance(latent, clonal_claims):
         penalty += 0.25
 
     adjusted = max(0.0, min(1.0, min(score, cap) - penalty))
@@ -197,6 +226,9 @@ def _apply_expert_terminal_caps(
         "expert_cap": cap,
         "expert_penalty": penalty,
         "expert_validation_count": validation_count,
+        "expert_distinct_validated_subpopulations": len(
+            distinct_validated_subpopulations
+        ),
         "expert_matched_clone_claims": len(matched_truths),
         "expert_distinct_mechanisms": _distinct_clonal_mechanisms(clonal_claims),
         "expert_applied_caps": applied_caps,
