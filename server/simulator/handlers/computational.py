@@ -34,6 +34,59 @@ def _is_multiclone_expert(s: FullLatentState) -> bool:
     )
 
 
+def _clone_alias_map(s: FullLatentState) -> Dict[str, str]:
+    return {
+        clone_name: f"subpopulation_{idx}"
+        for idx, clone_name in enumerate(s.biology.clone_truth.keys())
+    }
+
+
+def _minor_clone_name(s: FullLatentState) -> str | None:
+    if not s.biology.clone_truth:
+        return None
+    return min(
+        s.biology.clone_truth.items(),
+        key=lambda item: item[1].get("size", 1.0),
+    )[0]
+
+
+def _dominant_clone_name(s: FullLatentState) -> str | None:
+    if not s.biology.clone_truth:
+        return None
+    return max(
+        s.biology.clone_truth.items(),
+        key=lambda item: item[1].get("size", 0.0),
+    )[0]
+
+
+def _noisy_cluster_sizes(
+    sizes: List[int],
+    rng,
+    total: int,
+) -> List[int]:
+    if not sizes:
+        return []
+
+    noisy = []
+    for size in sizes:
+        scaled = size * float(rng.uniform(0.88, 1.12))
+        noisy.append(max(1, int(round(scaled))))
+
+    diff = total - sum(noisy)
+    noisy[0] += diff
+    if noisy[0] <= 0:
+        noisy[0] = 1
+        overflow = sum(noisy) - total
+        if overflow > 0:
+            for idx in range(1, len(noisy)):
+                removable = min(noisy[idx] - 1, overflow)
+                noisy[idx] -= removable
+                overflow -= removable
+                if overflow == 0:
+                    break
+    return noisy
+
+
 def run_qc(
     gen, action: ExperimentAction, s: FullLatentState, idx: int
 ) -> IntermediateOutput:
@@ -150,16 +203,21 @@ def cluster_cells(
             for p in s.biology.cell_populations
             if p.name not in set(s.biology.clone_truth.keys())
         ]
-        cluster_names = ["AML_founder_blast", *list(s.biology.clone_truth.keys())]
+        internal_cluster_labels = ["AML_founder_blast", *list(s.biology.clone_truth.keys())]
         for pop_name in background:
-            if pop_name not in cluster_names:
-                cluster_names.append(pop_name)
+            if pop_name not in internal_cluster_labels:
+                internal_cluster_labels.append(pop_name)
 
         integrated = s.progress.batches_integrated
-        if not integrated and "JAK2_STAT5_resistant_clone" in cluster_names:
-            cluster_names.remove("JAK2_STAT5_resistant_clone")
-            cluster_names.append("merged_relapse_blast")
+        minor_clone = _minor_clone_name(s)
+        if not integrated and minor_clone in internal_cluster_labels:
+            internal_cluster_labels.remove(minor_clone)
+            internal_cluster_labels.append("merged_relapse_state")
 
+        cluster_names = [
+            f"cluster_{i}" for i in range(len(internal_cluster_labels))
+        ]
+        cluster_aliases = dict(zip(internal_cluster_labels, cluster_names))
         n_clusters = len(cluster_names)
         n_cells = s.progress.n_cells_after_filter or s.biology.n_true_cells
         quality = gen.noise.quality_degradation(
@@ -169,18 +227,20 @@ def cluster_cells(
         sizes = partition_by_population(
             n_cells, n_clusters, s.biology.cell_populations, gen.noise.rng
         )
+        sizes = _noisy_cluster_sizes(sizes, gen.noise.rng, n_cells)
         relapse_clusters = [
-            c for c in cluster_names if "clone" in c.lower() or "relapse" in c.lower()
+            cluster_aliases[label]
+            for label in internal_cluster_labels
+            if label in s.biology.clone_truth or label == "merged_relapse_state"
         ]
-        minor_clone_detected = "JAK2_STAT5_resistant_clone" in cluster_names
         return IntermediateOutput(
             output_type=OutputType.CLUSTER_RESULT,
             step_index=idx,
             quality_score=quality,
             summary=(
-                "Clone-aware clustering resolved relapse-enriched blast states"
+                "Clustering resolved multiple relapse-enriched subpopulations"
                 if integrated
-                else "Clustering found relapse structure, but minor clone separation is incomplete"
+                else "Clustering found relapse structure, but one small resistant branch remains partially merged"
             ),
             data={
                 "n_clusters": n_clusters,
@@ -189,15 +249,7 @@ def cluster_cells(
                 "silhouette_score": gen.noise.sample_qc_metric(
                     0.44 if integrated else 0.28, 0.08, -1.0, 1.0
                 ),
-                "relapse_enriched_clusters": relapse_clusters,
-                "clone_clusters": {
-                    clone_name: {
-                        "detected": clone_name in cluster_names,
-                        "size_fraction": truth.get("size", 0.0),
-                    }
-                    for clone_name, truth in s.biology.clone_truth.items()
-                },
-                "minor_clone_detected": minor_clone_detected,
+                "cluster_markers_available": bool(relapse_clusters),
                 "batch_integration_recommended": not integrated,
             },
             uncertainty=0.18 if integrated else 0.42,
@@ -242,6 +294,9 @@ def differential_expression(
         true_effects = s.biology.true_de_genes.get(comparison, {})
         integrated = s.progress.batches_integrated
         clone_truth = s.biology.clone_truth
+        clone_aliases = _clone_alias_map(s)
+        minor_clone = _minor_clone_name(s)
+        dominant_clone = _dominant_clone_name(s)
         batch_noise = sum(s.technical.batch_effects.values()) / max(
             len(s.technical.batch_effects), 1
         )
@@ -259,39 +314,39 @@ def differential_expression(
 
         clone_de: Dict[str, Any] = {}
         pooled_top: List[tuple[str, float]] = []
-        mechanism_confidence: Dict[str, float] = {}
-        inferred_mechanisms: List[str] = []
         for clone_name, truth in clone_truth.items():
             clone_effects = truth.get("de_genes", {})
             clone_noise = noise_level + (0.10 if not integrated else 0.0)
-            if clone_name == "JAK2_STAT5_resistant_clone" and not integrated:
+            if clone_name == minor_clone and not integrated:
                 clone_noise += 0.15
             observed_clone = gen.noise.sample_effect_sizes(
                 clone_effects,
-                max(2000, int((s.progress.n_cells_after_filter or s.biology.n_true_cells) * truth.get("size", 0.1))),
+                max(
+                    2000,
+                    int(
+                        (s.progress.n_cells_after_filter or s.biology.n_true_cells)
+                        * truth.get("size", 0.1)
+                    ),
+                ),
                 clone_noise,
             )
             clone_top = sorted(
                 observed_clone.items(), key=lambda kv: abs(kv[1]), reverse=True
             )[:8]
             clone_detected = not (
-                clone_name == "JAK2_STAT5_resistant_clone" and not integrated
+                clone_name == minor_clone and not integrated
             )
-            clone_de[clone_name] = {
+            clone_de[clone_aliases[clone_name]] = {
                 "detected": clone_detected,
                 "top_genes": [
                     {"gene": g, "log2FC": round(fc, 3)} for g, fc in clone_top
                 ],
-                "mechanism": truth.get("mechanism", ""),
-                "confidence": 0.81 if clone_name == "MCL1_resistant_clone" else (
+                "confidence": 0.81 if clone_name == dominant_clone else (
                     0.66 if integrated else 0.42
                 ),
             }
             if clone_detected:
                 pooled_top.extend(clone_top[:5])
-                mechanism = truth.get("mechanism", "")
-                inferred_mechanisms.append(mechanism)
-                mechanism_confidence[mechanism] = clone_de[clone_name]["confidence"]
 
         if not pooled_top:
             pooled_top = list(observed.items())
@@ -304,7 +359,7 @@ def differential_expression(
         warnings: List[str] = []
         if not integrated:
             warnings.append(
-                "Residual batch structure may understate the smaller JAK2-STAT5 clone"
+                "Residual batch structure may understate the smaller resistant branch"
             )
         return IntermediateOutput(
             output_type=OutputType.DE_RESULT,
@@ -314,7 +369,7 @@ def differential_expression(
                 [1.0 - min(noise_level, 0.9)],
             ),
             summary=(
-                "Bulk DE remains mixed, but clone-resolved contrasts reveal parallel resistance programs"
+                "Bulk DE remains mixed, but subgroup-resolved contrasts reveal parallel relapse programs"
             ),
             data={
                 "comparison": comparison,
@@ -325,8 +380,6 @@ def differential_expression(
                 "n_significant": sum(1 for _, fc in merged.items() if abs(fc) > 0.5),
                 "bulk_signal_is_mixed": True,
                 "clone_de": clone_de,
-                "inferred_mechanisms": inferred_mechanisms,
-                "mechanism_confidence": mechanism_confidence,
             },
             uncertainty=0.24 if integrated else 0.46,
             warnings=warnings,

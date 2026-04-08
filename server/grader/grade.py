@@ -17,7 +17,7 @@ from .types import GradeResult
 
 if TYPE_CHECKING:
     from ...models import ExperimentObservation
-    from ...simulator.latent_state import FullLatentState
+    from ..simulator.latent_state import FullLatentState
 
 _W_PIPELINE = 0.30
 _W_BIOLOGY = 0.55

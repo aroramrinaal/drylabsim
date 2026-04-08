@@ -137,9 +137,9 @@ class TestPerfectEpisode:
             ],
         )
         result = grade_episode(obs, latent)
-        assert result.score > 0.85
+        assert result.score > 0.84
         assert result.completeness >= 0.89
-        assert result.biology_score > 0.9
+        assert result.biology_score > 0.86
         assert 0.0 <= result.score <= 1.0
 
 
@@ -564,3 +564,59 @@ class TestBiologyScoring:
             conclusions=[],
         )
         assert score > 0.8
+
+    def test_marker_dumping_gets_precision_penalty(self):
+        state = _make_latent(
+            true_markers=["NPPA", "NPPB"],
+            causal_mechanisms=["TGF-beta-driven fibrosis"],
+        )
+        focused = score_biology(
+            state,
+            discovered_markers=["NPPA", "NPPB"],
+            candidate_mechanisms=["TGF-beta-driven fibrosis"],
+            conclusions=[],
+        )
+        dumped = score_biology(
+            state,
+            discovered_markers=["NPPA", "NPPB", "WRONG1", "WRONG2", "WRONG3", "WRONG4"],
+            candidate_mechanisms=["TGF-beta-driven fibrosis"],
+            conclusions=[],
+        )
+        assert focused > dumped
+
+    def test_confounder_pathways_reduce_biology_score(self):
+        state = _make_latent(
+            true_markers=["NPPA"],
+            causal_mechanisms=["TGF-beta-driven fibrosis"],
+            true_pathways={"cardiac_muscle_contraction": 0.8},
+        )
+        state.biology.confounders = {"TNF_NFkB_signalling": 0.9}
+
+        clean = score_biology(
+            state,
+            discovered_markers=["NPPA"],
+            candidate_mechanisms=["TGF-beta-driven fibrosis"],
+            conclusions=[
+                ConclusionClaim(
+                    top_markers=["NPPA"],
+                    causal_mechanisms=["TGF-beta-driven fibrosis"],
+                    predicted_pathways={"cardiac_muscle_contraction": 0.8},
+                )
+            ],
+        )
+        confounded = score_biology(
+            state,
+            discovered_markers=["NPPA"],
+            candidate_mechanisms=["TGF-beta-driven fibrosis"],
+            conclusions=[
+                ConclusionClaim(
+                    top_markers=["NPPA"],
+                    causal_mechanisms=["TGF-beta-driven fibrosis"],
+                    predicted_pathways={
+                        "cardiac_muscle_contraction": 0.8,
+                        "TNF_NFkB_signalling": 0.9,
+                    },
+                )
+            ],
+        )
+        assert clean > confounded

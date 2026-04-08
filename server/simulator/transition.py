@@ -266,13 +266,6 @@ class TransitionEngine:
             top = output.data.get("top_genes", [])
             s.discovered_de_genes = [g["gene"] for g in top[:20]]
             s.progress.n_de_genes_found = output.data.get("n_significant", 0)
-            inferred_mechanisms = output.data.get("inferred_mechanisms", [])
-            conf = output.data.get("mechanism_confidence", {})
-            for mechanism in inferred_mechanisms:
-                score = conf.get(mechanism, 0.6)
-                s.mechanism_confidence[mechanism] = max(
-                    s.mechanism_confidence.get(mechanism, 0.0), score
-                )
 
         if action.action_type == ActionType.CLUSTER_CELLS:
             s.discovered_clusters = output.data.get("cluster_names", [])
@@ -284,16 +277,3 @@ class TransitionEngine:
                 s.discovered_clone_markers = {
                     clone: list(markers) for clone, markers in clone_markers.items()
                 }
-
-        if action.action_type in {
-            ActionType.PATHWAY_ENRICHMENT,
-            ActionType.REGULATORY_NETWORK_INFERENCE,
-            ActionType.TRAJECTORY_ANALYSIS,
-        }:
-            inferred_mechanisms = output.data.get("inferred_mechanisms", [])
-            conf = output.data.get("mechanism_confidence", {})
-            for mechanism in inferred_mechanisms:
-                score = conf.get(mechanism, 0.6)
-                s.mechanism_confidence[mechanism] = max(
-                    s.mechanism_confidence.get(mechanism, 0.0), score
-                )

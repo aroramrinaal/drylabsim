@@ -59,6 +59,14 @@ _METHOD_TO_TOOL: Dict[str, str] = {
 }
 
 
+def _strict_mechanism_credit(score: float) -> float:
+    if score <= 0.4:
+        return 0.0
+    if score >= 0.7:
+        return 1.0
+    return (score - 0.4) / 0.3
+
+
 def ordering_score(action: ExperimentAction, s: FullLatentState) -> float:
     """Heuristic: 1.0 if natural next, 0.3 if acceptable, -1.0 if premature."""
     at = action.action_type
@@ -162,7 +170,7 @@ def calibration(s: FullLatentState, conclusions: List[ConclusionClaim]) -> float
         m_score = marker_set_score(pred_markers, s.biology.true_markers)
         mech_score = mechanism_set_score(pred_mechs, s.biology.causal_mechanisms)
         pw_score = score_pathways(pred_pathways, s.biology.true_pathways)
-        calibrated_mech_score = mech_score
+        calibrated_mech_score = _strict_mechanism_credit(mech_score)
         if mech_conf and s.biology.causal_mechanisms:
             confidence_penalties: List[float] = []
             truth_lower = [m.lower() for m in s.biology.causal_mechanisms]
@@ -175,7 +183,7 @@ def calibration(s: FullLatentState, conclusions: List[ConclusionClaim]) -> float
                     1.0 - abs(float(conf) - (1.0 if is_truth_like else 0.0))
                 )
             if confidence_penalties:
-                calibrated_mech_score = 0.7 * mech_score + 0.3 * (
+                calibrated_mech_score = 0.7 * calibrated_mech_score + 0.3 * (
                     sum(confidence_penalties) / len(confidence_penalties)
                 )
         return 0.50 * m_score + 0.35 * calibrated_mech_score + 0.15 * pw_score

@@ -143,7 +143,6 @@ class FullLatentState(BaseModel):
     progress: ExperimentProgress = Field(default_factory=ExperimentProgress)
     resources: ResourceState = Field(default_factory=ResourceState)
     hidden_failure_conditions: List[str] = Field(default_factory=list)
-    mechanism_confidence: Dict[str, float] = Field(default_factory=dict)
     discovered_de_genes: List[str] = Field(default_factory=list)
     discovered_clusters: List[str] = Field(default_factory=list)
     discovered_clone_markers: Dict[str, List[str]] = Field(default_factory=dict)

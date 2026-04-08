@@ -140,8 +140,10 @@ class TestOutputGenerator:
         assert out.output_type == OutputType.DE_RESULT
         assert out.data["bulk_signal_is_mixed"] is True
         assert "clone_de" in out.data
-        assert "MCL1_resistant_clone" in out.data["clone_de"]
-        assert "JAK2_STAT5_resistant_clone" in out.data["clone_de"]
+        assert "subpopulation_0" in out.data["clone_de"]
+        assert "subpopulation_1" in out.data["clone_de"]
+        assert "mechanism" not in out.data["clone_de"]["subpopulation_0"]
+        assert "relapse_enriched_clusters" not in out.data
 
     def test_expert_pathway_enrichment_emits_clone_pathways(self):
         noise = NoiseModel(seed=7)
@@ -153,7 +155,18 @@ class TestOutputGenerator:
         out = gen.generate(action, s, 6)
         assert out.output_type == OutputType.PATHWAY_RESULT
         assert "clone_pathways" in out.data
-        assert len(out.data["inferred_mechanisms"]) >= 2
+        assert "subpopulation_0" in out.data["clone_pathways"]
+        assert "inferred_mechanisms" not in out.data
+
+    def test_expert_clustering_omits_relapse_hint_and_noises_sizes(self):
+        noise = NoiseModel(seed=11)
+        gen = OutputGenerator(noise)
+        s = _make_multiclone_state()
+        out = gen.generate(ExperimentAction(action_type=ActionType.CLUSTER_CELLS), s, 4)
+        assert out.output_type == OutputType.CLUSTER_RESULT
+        assert "relapse_enriched_clusters" not in out.data
+        assert out.data["cluster_markers_available"] is True
+        assert sum(out.data["cluster_sizes"]) == s.biology.n_true_cells
 
 
 class TestTransitionEngine:
@@ -195,12 +208,11 @@ class TestTransitionEngine:
         result = engine.step(s, action)
         assert result.done is True
 
-    def test_expert_mechanism_confidence_propagates_from_analysis_outputs(self):
+    def test_expert_analysis_outputs_no_longer_autopropagate_mechanisms(self):
         noise = NoiseModel(seed=0)
         engine = TransitionEngine(noise)
         s = _make_multiclone_state()
         s.progress.cells_clustered = True
         s.progress.de_performed = True
         result = engine.step(s, ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT))
-        assert "MCL1 escape" in result.next_state.mechanism_confidence
-        assert "STAT5 survival" in result.next_state.mechanism_confidence
+        assert "mechanism_confidence" not in result.next_state.model_dump()

@@ -14,6 +14,10 @@ except ImportError:  # pragma: no cover
 from .types import RuleViolation, Severity
 
 _MULTICLONE_EXPERT_SCENARIO = "venetoclax_resistance_multiclone"
+_STRICT_CONCLUSION_SCENARIOS = {
+    "perturbation_immune",
+    _MULTICLONE_EXPERT_SCENARIO,
+}
 
 
 def _has_analysis_evidence(s: FullLatentState) -> bool:
@@ -39,6 +43,11 @@ def _has_marker_evidence(s: FullLatentState) -> bool:
 def _has_mechanism_evidence(s: FullLatentState) -> bool:
     p = s.progress
     return p.pathways_analyzed or p.networks_inferred
+
+
+def _claim_dicts(action: ExperimentAction) -> List[dict]:
+    raw_claims = action.parameters.get("claims", [])
+    return [claim for claim in raw_claims if isinstance(claim, dict)]
 
 
 def check_causal_validity(
@@ -75,6 +84,10 @@ def check_causal_validity(
             )
 
     if action.action_type == ActionType.SYNTHESIZE_CONCLUSION:
+        claims = _claim_dicts(action)
+        has_marker_claims = any(claim.get("top_markers") for claim in claims)
+        has_mechanism_claims = any(claim.get("causal_mechanisms") for claim in claims)
+
         if not s.progress.de_performed and not s.progress.cells_clustered:
             vs.append(
                 RuleViolation(
@@ -99,6 +112,49 @@ def check_causal_validity(
                     rule_id="conclusion_without_mechanism_evidence",
                     severity=Severity.HARD,
                     message="Cannot synthesise conclusion before inferring pathways or mechanisms",
+                )
+            )
+
+        if (
+            s.scenario_name in _STRICT_CONCLUSION_SCENARIOS
+            and not has_mechanism_claims
+        ):
+            vs.append(
+                RuleViolation(
+                    rule_id="strict_conclusion_requires_mechanism_claims",
+                    severity=Severity.HARD,
+                    message=(
+                        "This harder scenario requires synthesize_conclusion to name "
+                        "at least one causal mechanism explicitly"
+                    ),
+                )
+            )
+
+        if has_mechanism_claims and any(
+            not claim.get("evidence_steps")
+            for claim in claims
+            if claim.get("causal_mechanisms")
+        ):
+            vs.append(
+                RuleViolation(
+                    rule_id="mechanism_claim_without_evidence_steps",
+                    severity=Severity.HARD,
+                    message=(
+                        "Mechanism claims must cite supporting evidence_steps "
+                        "from pathway or regulatory analyses"
+                    ),
+                )
+            )
+
+        if has_marker_claims and not s.progress.markers_validated:
+            vs.append(
+                RuleViolation(
+                    rule_id="marker_claim_without_validation",
+                    severity=Severity.SOFT,
+                    message=(
+                        "Conclusion claims top markers without validating at least "
+                        "one marker"
+                    ),
                 )
             )
 
@@ -136,24 +192,23 @@ def check_causal_validity(
                         ),
                     )
                 )
-            if len(s.mechanism_confidence) < 2:
+            if len(s.discovered_clone_markers) < 2:
                 vs.append(
                     RuleViolation(
-                        rule_id="expert_conclusion_without_both_mechanisms",
+                        rule_id="expert_conclusion_without_multiple_clone_marker_sets",
                         severity=Severity.HARD,
                         message=(
                             "Cannot synthesise the multiclone resistance conclusion "
-                            "before both resistant mechanisms have supporting evidence"
+                            "before multiple relapse subpopulations have "
+                            "marker-supported evidence"
                         ),
                     )
                 )
 
-        claims = action.parameters.get("claims", [])
         unique_claim_mechs = set()
         for claim in claims:
-            if isinstance(claim, dict):
-                unique_claim_mechs.update(claim.get("causal_mechanisms", []))
-            if isinstance(claim, dict) and claim.get("claim_type") == "causal":
+            unique_claim_mechs.update(claim.get("causal_mechanisms", []))
+            if claim.get("claim_type") == "causal":
                 if (
                     not s.progress.markers_validated
                     and not s.progress.networks_inferred

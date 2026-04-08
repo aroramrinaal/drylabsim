@@ -18,18 +18,18 @@ NOISE_TFS: List[str] = [
     "NFKB1",
     "RELA",
     "SP1",
-    "MYC",
     "MAX",
     "E2F1",
     "CTCF",
     "YY1",
     "TP53",
-    "STAT5A",
     "SMAD3",
     "TCF7L2",
     "NFE2L2",
     "HIF1A",
-    "CREB1",
+    "RUNX1",
+    "BACH1",
+    "ETS1",
 ]
 
 

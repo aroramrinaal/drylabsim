@@ -378,24 +378,3 @@ class BioExperimentEnvironment(Environment):
                 if m not in existing:
                     self._discovered_markers.append(m)
                     existing.add(m)
-        if action.action_type == ActionType.REGULATORY_NETWORK_INFERENCE:
-            regs = output.data.get("top_regulators", [])
-            existing = set(self._candidate_mechanisms)
-            for r in regs:
-                if r not in existing:
-                    self._candidate_mechanisms.append(r)
-                    existing.add(r)
-        if action.action_type == ActionType.PATHWAY_ENRICHMENT:
-            pathways = output.data.get("top_pathways", [])
-            existing = set(self._candidate_mechanisms)
-            for p in pathways:
-                if isinstance(p, dict) and p["pathway"] not in existing:
-                    self._candidate_mechanisms.append(p["pathway"])
-                    existing.add(p["pathway"])
-        inferred_mechanisms = output.data.get("inferred_mechanisms", [])
-        if inferred_mechanisms:
-            existing = set(self._candidate_mechanisms)
-            for mechanism in inferred_mechanisms:
-                if mechanism and mechanism not in existing:
-                    self._candidate_mechanisms.append(mechanism)
-                    existing.add(mechanism)
