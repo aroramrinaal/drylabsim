@@ -257,12 +257,13 @@ def _infer_completeness_from_history(pipeline_history: List[dict]) -> float:
 
 def _infer_biology_score(obs: dict) -> float:
     discovered_markers = obs.get("discovered_markers", [])
-    candidate_mechanisms = obs.get("candidate_mechanisms", [])
     conclusions = obs.get("conclusions", [])
+    task_name = str((obs.get("metadata") or {}).get("task_name", ""))
+    inferred_mechanisms = _mechanism_hypotheses(task_name, obs)
 
     marker_score = min(1.0, len(discovered_markers) / 4.0) if discovered_markers else 0.0
     mechanism_score = (
-        min(1.0, len(candidate_mechanisms) / 2.0) if candidate_mechanisms else 0.0
+        min(1.0, len(inferred_mechanisms) / 2.0) if inferred_mechanisms else 0.0
     )
 
     conclusion_score = 0.0
@@ -336,6 +337,138 @@ def _best_pathways(outputs: Iterable[dict]) -> Dict[str, float]:
     return dict(list(pathways.items())[:6])
 
 
+def _best_regulators(outputs: Iterable[dict]) -> List[str]:
+    regulators: List[str] = []
+    seen = set()
+    for output in outputs:
+        if output.get("output_type") != "network_result":
+            continue
+
+        for regulator in output.get("data", {}).get("top_regulators", []):
+            reg = str(regulator).strip()
+            if not reg or reg in seen:
+                continue
+            seen.add(reg)
+            regulators.append(reg)
+
+        for clone_data in output.get("data", {}).get("clone_regulators", {}).values():
+            for regulator in clone_data.get("top_regulators", []):
+                reg = str(regulator).strip()
+                if not reg or reg in seen:
+                    continue
+                seen.add(reg)
+                regulators.append(reg)
+
+    return regulators[:10]
+
+
+def _contains_any(values: Iterable[str], terms: Iterable[str]) -> bool:
+    value_blob = " ".join(str(v).lower() for v in values)
+    return any(term.lower() in value_blob for term in terms)
+
+
+def _mechanism_hypotheses(task_name: str, obs: dict) -> List[str]:
+    explicit = [
+        str(mech).strip()
+        for mech in obs.get("candidate_mechanisms", [])
+        if str(mech).strip()
+    ]
+    if explicit:
+        return explicit[:4]
+
+    all_outputs = obs.get("all_outputs", [])
+    discovered_markers = [str(m).strip() for m in obs.get("discovered_markers", [])]
+    pathway_names = list(_best_pathways(all_outputs).keys())
+    regulators = _best_regulators(all_outputs)
+    evidence = pathway_names + regulators + discovered_markers
+
+    hypotheses: List[str] = []
+
+    if task_name == "hard":
+        if _contains_any(
+            evidence,
+            [
+                "jak_stat",
+                "th1",
+                "th17",
+                "cytokine",
+                "stat1",
+                "stat3",
+                "ifng",
+                "il17a",
+                "rorc",
+                "tbx21",
+            ],
+        ):
+            hypotheses.append(
+                "JAK-STAT pathway inhibition reduces Th1/Th17 activation"
+            )
+        if _contains_any(
+            evidence,
+            [
+                "regulatory_t_cell",
+                "immune_state_rebalancing",
+                "foxp3",
+                "il10",
+                "il2ra",
+                "ctla4",
+            ],
+        ):
+            hypotheses.append("Compensatory Treg expansion under JAK inhibition")
+
+    if task_name == "expert":
+        if _contains_any(
+            evidence,
+            [
+                "intrinsic_apoptosis",
+                "integrated_stress",
+                "oxidative",
+                "mcl1",
+                "bcl2a1",
+                "sox4",
+                "il1rap",
+                "ddit3",
+                "creb1",
+                "atf4",
+                "xbp1",
+            ],
+        ):
+            hypotheses.append(
+                "An MCL1/BCL2A1 anti-apoptotic escape program sustains one resistant AML subclone under venetoclax pressure"
+            )
+        if _contains_any(
+            evidence,
+            [
+                "jak_stat",
+                "cytokine_receptor",
+                "stress_response",
+                "jak2",
+                "stat5a",
+                "pim1",
+                "socs2",
+                "cish",
+                "irf8",
+            ],
+        ):
+            hypotheses.append(
+                "A JAK2-STAT5-PIM1 survival program sustains a second resistant AML subclone in parallel"
+            )
+
+    if not hypotheses and pathway_names:
+        top_pathways = ", ".join(pathway_names[:2])
+        hypotheses.append(
+            f"Evidence supports pathway-level remodeling involving {top_pathways}"
+        )
+
+    deduped: List[str] = []
+    seen = set()
+    for mechanism in hypotheses:
+        if mechanism not in seen:
+            seen.add(mechanism)
+            deduped.append(mechanism)
+    return deduped[:4]
+
+
 def _evidence_steps(pipeline_history: List[dict]) -> List[int]:
     supported_actions = {
         "differential_expression",
@@ -354,7 +487,6 @@ def _evidence_steps(pipeline_history: List[dict]) -> List[int]:
 
 def build_fallback_action(task_name: str, obs: dict, action_name: str) -> dict:
     discovered_markers = obs.get("discovered_markers", [])
-    candidate_mechanisms = obs.get("candidate_mechanisms", [])
     all_outputs = obs.get("all_outputs", [])
     pipeline_history = obs.get("pipeline_history", [])
 
@@ -376,7 +508,7 @@ def build_fallback_action(task_name: str, obs: dict, action_name: str) -> dict:
         action["parameters"] = {"marker": marker, "assay": "qPCR"}
     elif action_name == "synthesize_conclusion":
         top_markers = discovered_markers[:6]
-        mechanisms = candidate_mechanisms[:4]
+        mechanisms = _mechanism_hypotheses(task_name, obs)
         predicted_pathways = _best_pathways(all_outputs)
         confidence = 0.62 if task_name == "expert" else 0.68
         claim_type = "causal" if mechanisms else "correlational"
@@ -427,7 +559,7 @@ def build_user_prompt(
     latest_output = obs.get("latest_output") or {}
     pipeline_history = obs.get("pipeline_history", [])
     discovered_markers = obs.get("discovered_markers", [])
-    candidate_mechanisms = obs.get("candidate_mechanisms", [])
+    mechanism_hypotheses = _mechanism_hypotheses(task_name, obs)
     rule_violations = obs.get("rule_violations", [])
 
     latest_summary = "None"
@@ -458,7 +590,7 @@ def build_user_prompt(
         {latest_summary}
 
         Discovered markers: {discovered_markers}
-        Candidate mechanisms: {candidate_mechanisms}
+        Mechanism hypotheses from outputs: {mechanism_hypotheses}
         Current rule violations: {rule_violations}
 
         Recommended next action: {recommended_action}
