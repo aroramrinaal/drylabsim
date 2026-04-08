@@ -45,7 +45,7 @@ def venetoclax_resistance_multiclone() -> Scenario:
             prior_observations=[
                 "The patient initially responded to venetoclax-based therapy before relapsing",
                 "Bulk expression suggested both apoptotic rewiring and cytokine signalling, but no single mechanism was definitive",
-                "Relapse marrow contains a rare blast population that is near the clustering detection limit",
+                "Relapse marrow shows heterogeneous blast-state remodeling after treatment",
             ],
             success_criteria=[
                 "Resolve whether relapse is driven by one resistant state or multiple resistant subclones",

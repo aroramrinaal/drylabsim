@@ -216,6 +216,111 @@ class TestEnvironmentLifecycle:
         assert obs.latest_output.success is False
         assert any("trajectory" in msg.lower() for msg in obs.rule_violations)
 
+    def test_hard_scenario_blocks_conclusion_without_mechanism_claims(self):
+        env = BioExperimentEnvironment(
+            scenario_name="perturbation_immune",
+            domain_randomise=False,
+        )
+        env.reset()
+
+        pipeline = [
+            ExperimentAction(action_type=ActionType.COLLECT_SAMPLE),
+            ExperimentAction(action_type=ActionType.PREPARE_LIBRARY),
+            ExperimentAction(action_type=ActionType.SEQUENCE_CELLS),
+            ExperimentAction(action_type=ActionType.RUN_QC),
+            ExperimentAction(action_type=ActionType.FILTER_DATA),
+            ExperimentAction(action_type=ActionType.NORMALIZE_DATA),
+            ExperimentAction(action_type=ActionType.CLUSTER_CELLS),
+            ExperimentAction(
+                action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+                parameters={"comparison": "treated_vs_untreated"},
+            ),
+            ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT),
+            ExperimentAction(action_type=ActionType.MARKER_SELECTION),
+            ExperimentAction(
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "STAT1", "assay": "qPCR"},
+            ),
+        ]
+        for action in pipeline:
+            obs = env.step(action)
+            assert obs.latest_output is not None
+            assert obs.latest_output.success is True
+
+        obs = env.step(
+            ExperimentAction(
+                action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                parameters={
+                    "claims": [
+                        {
+                            "claim": "Treatment changes immune state composition",
+                            "top_markers": ["STAT1", "SOCS1"],
+                            "confidence": 0.8,
+                            "claim_type": "correlational",
+                            "evidence_steps": [8, 9],
+                        }
+                    ]
+                },
+            )
+        )
+        assert obs.latest_output is not None
+        assert obs.latest_output.success is False
+        assert any("causal mechanism" in msg.lower() for msg in obs.rule_violations)
+
+    def test_hard_scenario_blocks_mechanism_claims_without_evidence_steps(self):
+        env = BioExperimentEnvironment(
+            scenario_name="perturbation_immune",
+            domain_randomise=False,
+        )
+        env.reset()
+
+        pipeline = [
+            ExperimentAction(action_type=ActionType.COLLECT_SAMPLE),
+            ExperimentAction(action_type=ActionType.PREPARE_LIBRARY),
+            ExperimentAction(action_type=ActionType.SEQUENCE_CELLS),
+            ExperimentAction(action_type=ActionType.RUN_QC),
+            ExperimentAction(action_type=ActionType.FILTER_DATA),
+            ExperimentAction(action_type=ActionType.NORMALIZE_DATA),
+            ExperimentAction(action_type=ActionType.CLUSTER_CELLS),
+            ExperimentAction(
+                action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+                parameters={"comparison": "treated_vs_untreated"},
+            ),
+            ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT),
+            ExperimentAction(action_type=ActionType.MARKER_SELECTION),
+            ExperimentAction(
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "STAT1", "assay": "qPCR"},
+            ),
+        ]
+        for action in pipeline:
+            obs = env.step(action)
+            assert obs.latest_output is not None
+            assert obs.latest_output.success is True
+
+        obs = env.step(
+            ExperimentAction(
+                action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                parameters={
+                    "claims": [
+                        {
+                            "claim": "JAK inhibition suppresses inflammatory signaling",
+                            "top_markers": ["STAT1", "SOCS1"],
+                            "causal_mechanisms": [
+                                "JAK-STAT pathway inhibition reduces Th1/Th17 activation"
+                            ],
+                            "confidence": 0.85,
+                            "claim_type": "causal",
+                            "evidence_steps": [],
+                        }
+                    ]
+                },
+            )
+        )
+        assert obs.latest_output is not None
+        assert obs.latest_output.success is False
+        assert any("evidence_steps" in msg.lower() for msg in obs.rule_violations)
+
 
 class TestSessionBackedHttpAPI:
     def test_reset_returns_session_id_and_step_uses_it(self):

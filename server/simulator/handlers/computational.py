@@ -50,6 +50,43 @@ def _minor_clone_name(s: FullLatentState) -> str | None:
     )[0]
 
 
+def _dominant_clone_name(s: FullLatentState) -> str | None:
+    if not s.biology.clone_truth:
+        return None
+    return max(
+        s.biology.clone_truth.items(),
+        key=lambda item: item[1].get("size", 0.0),
+    )[0]
+
+
+def _noisy_cluster_sizes(
+    sizes: List[int],
+    rng,
+    total: int,
+) -> List[int]:
+    if not sizes:
+        return []
+
+    noisy = []
+    for size in sizes:
+        scaled = size * float(rng.uniform(0.88, 1.12))
+        noisy.append(max(1, int(round(scaled))))
+
+    diff = total - sum(noisy)
+    noisy[0] += diff
+    if noisy[0] <= 0:
+        noisy[0] = 1
+        overflow = sum(noisy) - total
+        if overflow > 0:
+            for idx in range(1, len(noisy)):
+                removable = min(noisy[idx] - 1, overflow)
+                noisy[idx] -= removable
+                overflow -= removable
+                if overflow == 0:
+                    break
+    return noisy
+
+
 def run_qc(
     gen, action: ExperimentAction, s: FullLatentState, idx: int
 ) -> IntermediateOutput:
@@ -190,6 +227,7 @@ def cluster_cells(
         sizes = partition_by_population(
             n_cells, n_clusters, s.biology.cell_populations, gen.noise.rng
         )
+        sizes = _noisy_cluster_sizes(sizes, gen.noise.rng, n_cells)
         relapse_clusters = [
             cluster_aliases[label]
             for label in internal_cluster_labels
@@ -211,7 +249,7 @@ def cluster_cells(
                 "silhouette_score": gen.noise.sample_qc_metric(
                     0.44 if integrated else 0.28, 0.08, -1.0, 1.0
                 ),
-                "relapse_enriched_clusters": relapse_clusters,
+                "cluster_markers_available": bool(relapse_clusters),
                 "batch_integration_recommended": not integrated,
             },
             uncertainty=0.18 if integrated else 0.42,
@@ -258,6 +296,7 @@ def differential_expression(
         clone_truth = s.biology.clone_truth
         clone_aliases = _clone_alias_map(s)
         minor_clone = _minor_clone_name(s)
+        dominant_clone = _dominant_clone_name(s)
         batch_noise = sum(s.technical.batch_effects.values()) / max(
             len(s.technical.batch_effects), 1
         )
@@ -302,7 +341,7 @@ def differential_expression(
                 "top_genes": [
                     {"gene": g, "log2FC": round(fc, 3)} for g, fc in clone_top
                 ],
-                "confidence": 0.81 if clone_name == "MCL1_resistant_clone" else (
+                "confidence": 0.81 if clone_name == dominant_clone else (
                     0.66 if integrated else 0.42
                 ),
             }

@@ -48,6 +48,15 @@ def _minor_clone_name(s: FullLatentState) -> str | None:
     )[0]
 
 
+def _dominant_clone_name(s: FullLatentState) -> str | None:
+    if not s.biology.clone_truth:
+        return None
+    return max(
+        s.biology.clone_truth.items(),
+        key=lambda item: item[1].get("size", 0.0),
+    )[0]
+
+
 def trajectory_analysis(
     gen, action: ExperimentAction, s: FullLatentState, idx: int
 ) -> IntermediateOutput:
@@ -58,10 +67,11 @@ def trajectory_analysis(
         clone_truth = s.biology.clone_truth
         clone_aliases = _clone_alias_map(s)
         minor_clone = _minor_clone_name(s)
+        dominant_clone = _dominant_clone_name(s)
         clone_lineages = {}
         branch_confidence: Dict[str, float] = {}
         for clone_name, truth in clone_truth.items():
-            conf = 0.80 if clone_name == "MCL1_resistant_clone" else (
+            conf = 0.80 if clone_name == dominant_clone else (
                 0.68 if integrated else 0.45
             )
             clone_alias = clone_aliases[clone_name]
