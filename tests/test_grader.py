@@ -745,3 +745,430 @@ class TestBiologyScoring:
         assert flat <= 0.30
         assert structured > flat
         assert structured > contaminated
+
+
+class TestExpertTerminalCaps:
+    def test_expert_grade_caps_without_two_validations(self):
+        clone_truth = {
+            "MCL1_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.18,
+                "markers": ["MCL1", "BCL2A1", "SOX4"],
+                "pathways": {"intrinsic_apoptosis_regulation": 0.95},
+                "mechanism": "An MCL1/BCL2A1 anti-apoptotic escape program",
+            },
+            "JAK2_STAT5_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.12,
+                "markers": ["JAK2", "STAT5A", "PIM1"],
+                "pathways": {"JAK_STAT_signalling": 0.97},
+                "mechanism": "A JAK2-STAT5-PIM1 survival program",
+            },
+        }
+        latent = _make_latent(
+            progress=ExperimentProgress(
+                samples_collected=True,
+                cells_sequenced=True,
+                qc_performed=True,
+                data_filtered=True,
+                data_normalized=True,
+                batches_integrated=True,
+                cells_clustered=True,
+                de_performed=True,
+                pathways_analyzed=True,
+                networks_inferred=True,
+                trajectories_inferred=True,
+                markers_discovered=True,
+                markers_validated=True,
+                conclusion_reached=True,
+            ),
+            true_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
+            causal_mechanisms=[
+                "An MCL1/BCL2A1 anti-apoptotic escape program",
+                "A JAK2-STAT5-PIM1 survival program",
+            ],
+            true_pathways={
+                "intrinsic_apoptosis_regulation": 0.9,
+                "JAK_STAT_signalling": 0.85,
+            },
+            clone_truth=clone_truth,
+            scenario_name="venetoclax_resistance_multiclone",
+        )
+        obs = _make_obs(
+            discovered_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
+            conclusions=[
+                ConclusionClaim(
+                    clonal_claims=[
+                        ClonalClaim(
+                            subpopulation_id="cluster_1",
+                            markers=["MCL1", "BCL2A1", "SOX4"],
+                            mechanism="An MCL1/BCL2A1 anti-apoptotic escape program",
+                            supporting_pathways=["intrinsic_apoptosis_regulation"],
+                        ),
+                        ClonalClaim(
+                            subpopulation_id="cluster_2",
+                            markers=["JAK2", "STAT5A", "PIM1"],
+                            mechanism="A JAK2-STAT5-PIM1 survival program",
+                            supporting_pathways=["JAK_STAT_signalling"],
+                        ),
+                    ],
+                    clone_size_estimates={"cluster_1": 0.18, "cluster_2": 0.12},
+                )
+            ],
+        )
+        obs.pipeline_history = [
+            PipelineStepRecord(
+                step_index=1,
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "MCL1", "subpopulation_id": "cluster_1"},
+                output_summary="Validated MCL1 in resistant cluster",
+                output_type=OutputType.VALIDATION_RESULT,
+                success=True,
+            )
+        ]
+
+        result = grade_episode(obs, latent)
+
+        assert result.score <= 0.20
+        assert result.breakdown["expert_validation_count"] == 1
+        assert result.breakdown["expert_distinct_validated_subpopulations"] == 1
+
+    def test_expert_grade_caps_when_two_validations_hit_same_subpopulation(self):
+        clone_truth = {
+            "MCL1_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.18,
+                "markers": ["MCL1", "BCL2A1", "SOX4"],
+                "pathways": {"intrinsic_apoptosis_regulation": 0.95},
+                "mechanism": "An MCL1/BCL2A1 anti-apoptotic escape program",
+            },
+            "JAK2_STAT5_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.12,
+                "markers": ["JAK2", "STAT5A", "PIM1"],
+                "pathways": {"JAK_STAT_signalling": 0.97},
+                "mechanism": "A JAK2-STAT5-PIM1 survival program",
+            },
+        }
+        latent = _make_latent(
+            progress=ExperimentProgress(
+                samples_collected=True,
+                cells_sequenced=True,
+                qc_performed=True,
+                data_filtered=True,
+                data_normalized=True,
+                batches_integrated=True,
+                cells_clustered=True,
+                de_performed=True,
+                pathways_analyzed=True,
+                networks_inferred=True,
+                trajectories_inferred=True,
+                markers_discovered=True,
+                markers_validated=True,
+                conclusion_reached=True,
+            ),
+            true_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
+            causal_mechanisms=[
+                "An MCL1/BCL2A1 anti-apoptotic escape program",
+                "A JAK2-STAT5-PIM1 survival program",
+            ],
+            true_pathways={
+                "intrinsic_apoptosis_regulation": 0.9,
+                "JAK_STAT_signalling": 0.85,
+            },
+            clone_truth=clone_truth,
+            scenario_name="venetoclax_resistance_multiclone",
+        )
+        obs = _make_obs(
+            conclusions=[
+                ConclusionClaim(
+                    clonal_claims=[
+                        ClonalClaim(
+                            subpopulation_id="cluster_1",
+                            markers=["MCL1", "BCL2A1", "SOX4"],
+                            mechanism="An MCL1/BCL2A1 anti-apoptotic escape program",
+                            supporting_pathways=["intrinsic_apoptosis_regulation"],
+                        ),
+                        ClonalClaim(
+                            subpopulation_id="cluster_2",
+                            markers=["JAK2", "STAT5A", "PIM1"],
+                            mechanism="A JAK2-STAT5-PIM1 survival program",
+                            supporting_pathways=["JAK_STAT_signalling"],
+                        ),
+                    ]
+                )
+            ],
+        )
+        obs.pipeline_history = [
+            PipelineStepRecord(
+                step_index=1,
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "MCL1", "subpopulation_id": "cluster_1"},
+                output_summary="Validated MCL1",
+                output_type=OutputType.VALIDATION_RESULT,
+                success=True,
+            ),
+            PipelineStepRecord(
+                step_index=2,
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "BCL2A1", "subpopulation_id": "cluster_1"},
+                output_summary="Validated BCL2A1",
+                output_type=OutputType.VALIDATION_RESULT,
+                success=True,
+            ),
+        ]
+
+        result = grade_episode(obs, latent)
+
+        assert result.score <= 0.20
+        assert result.breakdown["expert_validation_count"] == 2
+        assert result.breakdown["expert_distinct_validated_subpopulations"] == 1
+
+    def test_expert_grade_penalizes_distractor_promotion(self):
+        clone_truth = {
+            "MCL1_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.18,
+                "markers": ["MCL1", "BCL2A1", "SOX4"],
+                "pathways": {"intrinsic_apoptosis_regulation": 0.95},
+                "mechanism": "An MCL1/BCL2A1 anti-apoptotic escape program",
+            },
+            "JAK2_STAT5_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.12,
+                "markers": ["JAK2", "STAT5A", "PIM1"],
+                "pathways": {"JAK_STAT_signalling": 0.97},
+                "mechanism": "A JAK2-STAT5-PIM1 survival program",
+            },
+            "cycling_distractor_clone": {
+                "is_resistant": False,
+                "size": 0.08,
+                "markers": ["MKI67", "TOP2A", "PCNA"],
+                "pathways": {"cell_cycle": 0.96},
+                "mechanism": "Cycling distractor",
+            },
+        }
+        latent = _make_latent(
+            progress=ExperimentProgress(
+                samples_collected=True,
+                cells_sequenced=True,
+                qc_performed=True,
+                data_filtered=True,
+                data_normalized=True,
+                batches_integrated=True,
+                cells_clustered=True,
+                de_performed=True,
+                pathways_analyzed=True,
+                networks_inferred=True,
+                trajectories_inferred=True,
+                markers_discovered=True,
+                markers_validated=True,
+                conclusion_reached=True,
+            ),
+            true_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
+            causal_mechanisms=[
+                "An MCL1/BCL2A1 anti-apoptotic escape program",
+                "A JAK2-STAT5-PIM1 survival program",
+            ],
+            true_pathways={
+                "intrinsic_apoptosis_regulation": 0.9,
+                "JAK_STAT_signalling": 0.85,
+            },
+            clone_truth=clone_truth,
+            scenario_name="venetoclax_resistance_multiclone",
+        )
+        clean = _make_obs(
+            conclusions=[
+                ConclusionClaim(
+                    clonal_claims=[
+                        ClonalClaim(
+                            subpopulation_id="cluster_1",
+                            markers=["MCL1", "BCL2A1", "SOX4"],
+                            mechanism="An MCL1/BCL2A1 anti-apoptotic escape program",
+                            supporting_pathways=["intrinsic_apoptosis_regulation"],
+                        ),
+                        ClonalClaim(
+                            subpopulation_id="cluster_2",
+                            markers=["JAK2", "STAT5A", "PIM1"],
+                            mechanism="A JAK2-STAT5-PIM1 survival program",
+                            supporting_pathways=["JAK_STAT_signalling"],
+                        ),
+                    ],
+                )
+            ],
+        )
+        contaminated = _make_obs(
+            conclusions=[
+                ConclusionClaim(
+                    clonal_claims=[
+                        ClonalClaim(
+                            subpopulation_id="cluster_1",
+                            markers=["MCL1", "BCL2A1", "MKI67", "TOP2A"],
+                            mechanism="An MCL1/BCL2A1 anti-apoptotic escape program",
+                            supporting_pathways=[
+                                "intrinsic_apoptosis_regulation",
+                                "cell_cycle",
+                            ],
+                        ),
+                        ClonalClaim(
+                            subpopulation_id="cluster_2",
+                            markers=["JAK2", "STAT5A", "PIM1"],
+                            mechanism="A JAK2-STAT5-PIM1 survival program",
+                            supporting_pathways=["JAK_STAT_signalling"],
+                        ),
+                    ],
+                )
+            ],
+        )
+        validation_steps = [
+            PipelineStepRecord(
+                step_index=1,
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "MCL1", "subpopulation_id": "cluster_1"},
+                output_summary="Validated MCL1",
+                output_type=OutputType.VALIDATION_RESULT,
+                success=True,
+            ),
+            PipelineStepRecord(
+                step_index=2,
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "JAK2", "subpopulation_id": "cluster_2"},
+                output_summary="Validated JAK2",
+                output_type=OutputType.VALIDATION_RESULT,
+                success=True,
+            ),
+        ]
+        clean.pipeline_history = validation_steps
+        contaminated.pipeline_history = validation_steps
+
+        clean_result = grade_episode(clean, latent)
+        contaminated_result = grade_episode(contaminated, latent)
+
+        assert clean_result.score > contaminated_result.score
+        assert contaminated_result.breakdown["expert_penalty"] == 0.25
+
+    def test_expert_grade_penalizes_extra_unmatched_distractor_claim(self):
+        clone_truth = {
+            "MCL1_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.18,
+                "markers": ["MCL1", "BCL2A1", "SOX4"],
+                "pathways": {"intrinsic_apoptosis_regulation": 0.95},
+                "mechanism": "An MCL1/BCL2A1 anti-apoptotic escape program",
+            },
+            "JAK2_STAT5_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.12,
+                "markers": ["JAK2", "STAT5A", "PIM1"],
+                "pathways": {"JAK_STAT_signalling": 0.97},
+                "mechanism": "A JAK2-STAT5-PIM1 survival program",
+            },
+            "cycling_distractor_clone": {
+                "is_resistant": False,
+                "size": 0.08,
+                "markers": ["MKI67", "TOP2A", "PCNA"],
+                "pathways": {"cell_cycle": 0.96},
+                "mechanism": "Cycling distractor",
+            },
+        }
+        latent = _make_latent(
+            progress=ExperimentProgress(
+                samples_collected=True,
+                cells_sequenced=True,
+                qc_performed=True,
+                data_filtered=True,
+                data_normalized=True,
+                batches_integrated=True,
+                cells_clustered=True,
+                de_performed=True,
+                pathways_analyzed=True,
+                networks_inferred=True,
+                trajectories_inferred=True,
+                markers_discovered=True,
+                markers_validated=True,
+                conclusion_reached=True,
+            ),
+            true_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
+            causal_mechanisms=[
+                "An MCL1/BCL2A1 anti-apoptotic escape program",
+                "A JAK2-STAT5-PIM1 survival program",
+            ],
+            true_pathways={
+                "intrinsic_apoptosis_regulation": 0.9,
+                "JAK_STAT_signalling": 0.85,
+            },
+            clone_truth=clone_truth,
+            scenario_name="venetoclax_resistance_multiclone",
+        )
+        obs = _make_obs(
+            conclusions=[
+                ConclusionClaim(
+                    clonal_claims=[
+                        ClonalClaim(
+                            subpopulation_id="cluster_1",
+                            markers=["MCL1", "BCL2A1", "SOX4"],
+                            mechanism="An MCL1/BCL2A1 anti-apoptotic escape program",
+                            supporting_pathways=["intrinsic_apoptosis_regulation"],
+                        ),
+                        ClonalClaim(
+                            subpopulation_id="cluster_2",
+                            markers=["JAK2", "STAT5A", "PIM1"],
+                            mechanism="A JAK2-STAT5-PIM1 survival program",
+                            supporting_pathways=["JAK_STAT_signalling"],
+                        ),
+                        ClonalClaim(
+                            subpopulation_id="cluster_3",
+                            markers=["MKI67", "TOP2A", "PCNA"],
+                            mechanism="Cycling distractor",
+                            supporting_pathways=["cell_cycle"],
+                        ),
+                    ]
+                )
+            ],
+        )
+        obs.pipeline_history = [
+            PipelineStepRecord(
+                step_index=1,
+                action_type=ActionType.INTEGRATE_BATCHES,
+                parameters={},
+                output_summary="Integrated batches",
+                output_type=OutputType.EMBEDDING_SUMMARY,
+                success=True,
+            ),
+            PipelineStepRecord(
+                step_index=2,
+                action_type=ActionType.TRAJECTORY_ANALYSIS,
+                parameters={},
+                output_summary="Resolved trajectory",
+                output_type=OutputType.TRAJECTORY_RESULT,
+                success=True,
+            ),
+            PipelineStepRecord(
+                step_index=3,
+                action_type=ActionType.REGULATORY_NETWORK_INFERENCE,
+                parameters={},
+                output_summary="Resolved networks",
+                output_type=OutputType.NETWORK_RESULT,
+                success=True,
+            ),
+            PipelineStepRecord(
+                step_index=4,
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "MCL1", "subpopulation_id": "cluster_1"},
+                output_summary="Validated MCL1",
+                output_type=OutputType.VALIDATION_RESULT,
+                success=True,
+            ),
+            PipelineStepRecord(
+                step_index=5,
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "JAK2", "subpopulation_id": "cluster_2"},
+                output_summary="Validated JAK2",
+                output_type=OutputType.VALIDATION_RESULT,
+                success=True,
+            ),
+        ]
+
+        result = grade_episode(obs, latent)
+
+        assert result.breakdown["expert_penalty"] == 0.25

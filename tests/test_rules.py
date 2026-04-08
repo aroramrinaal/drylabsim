@@ -232,6 +232,51 @@ class TestMetaActionTiming:
         soft = engine.soft_violations(violations)
         assert any("validating at least one marker" in m.lower() for m in soft)
 
+    def test_expert_single_clone_conclusion_is_hard_blocked(self):
+        engine = RuleEngine()
+        s = _state(
+            data_normalized=True,
+            cells_clustered=True,
+            de_performed=True,
+            pathways_analyzed=True,
+            networks_inferred=True,
+            trajectories_inferred=True,
+            markers_discovered=True,
+            markers_validated=True,
+        )
+        s.scenario_name = "venetoclax_resistance_multiclone"
+        s.discovered_clusters = ["cluster_1", "cluster_2"]
+        s.discovered_clone_markers = {
+            "cluster_1": ["MCL1", "BCL2A1"],
+            "cluster_2": ["JAK2", "STAT5A"],
+        }
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                parameters={
+                    "claims": [
+                        {
+                            "clonal_claims": [
+                                {
+                                    "subpopulation_id": "cluster_1",
+                                    "markers": ["MCL1", "BCL2A1"],
+                                    "mechanism": "An MCL1/BCL2A1 anti-apoptotic escape program",
+                                }
+                            ],
+                            "causal_mechanisms": [
+                                "An MCL1/BCL2A1 anti-apoptotic escape program"
+                            ],
+                            "evidence_steps": [8, 9, 10],
+                        }
+                    ]
+                },
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert any("two clone-resolved claims" in m.lower() for m in hard)
+        assert any("fewer than two resistant mechanisms" in m.lower() for m in hard)
+
 
 class TestResourceConstraints:
     def test_exhausted_budget_blocked(self):

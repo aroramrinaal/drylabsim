@@ -22,6 +22,7 @@ STDOUT FORMAT (mandatory — automated grader parses these lines):
 
 from __future__ import annotations
 
+from collections import Counter
 import json
 import os
 import re
@@ -117,6 +118,7 @@ TASK_PIPELINES: Dict[str, List[str]] = {
         "regulatory_network_inference",
         "trajectory_analysis",
         "marker_selection",
+        "validate_marker",
         "synthesize_conclusion",
     ],
 }
@@ -246,6 +248,14 @@ def _completed_actions(pipeline_history: List[dict]) -> set[str]:
     }
 
 
+def _completed_action_counts(pipeline_history: List[dict]) -> Dict[str, int]:
+    counts: Counter[str] = Counter()
+    for step in pipeline_history:
+        if step.get("success") and step.get("action_type"):
+            counts[str(step["action_type"])] += 1
+    return dict(counts)
+
+
 def _infer_completeness_from_history(pipeline_history: List[dict]) -> float:
     completed = _completed_actions(pipeline_history)
     core_score = sum(1 for step in CORE_MILESTONES if step in completed) / len(
@@ -316,9 +326,10 @@ def grade_from_obs(obs: dict) -> float:
 
 
 def recommend_next_action(task_name: str, pipeline_history: List[dict]) -> str:
-    completed = _completed_actions(pipeline_history)
+    counts = _completed_action_counts(pipeline_history)
     for action_name in TASK_PIPELINES[task_name]:
-        if action_name not in completed:
+        required_count = 2 if task_name == "expert" and action_name == "validate_marker" else 1
+        if counts.get(action_name, 0) < required_count:
             return action_name
     return "synthesize_conclusion"
 
@@ -510,6 +521,30 @@ def _evidence_steps(pipeline_history: List[dict]) -> List[int]:
     ]
 
 
+def _validated_markers(pipeline_history: List[dict]) -> set[str]:
+    validated = set()
+    for step in pipeline_history:
+        if not step.get("success") or step.get("action_type") != "validate_marker":
+            continue
+        marker = str(step.get("parameters", {}).get("marker", "")).strip()
+        if marker:
+            validated.add(marker)
+    return validated
+
+
+def _validated_subpopulations(pipeline_history: List[dict]) -> set[str]:
+    validated = set()
+    for step in pipeline_history:
+        if not step.get("success") or step.get("action_type") != "validate_marker":
+            continue
+        subpopulation = str(
+            step.get("parameters", {}).get("subpopulation_id", "")
+        ).strip()
+        if subpopulation:
+            validated.add(subpopulation)
+    return validated
+
+
 def build_fallback_action(task_name: str, obs: dict, action_name: str) -> dict:
     discovered_markers = obs.get("discovered_markers", [])
     all_outputs = obs.get("all_outputs", [])
@@ -529,8 +564,46 @@ def build_fallback_action(task_name: str, obs: dict, action_name: str) -> dict:
         if comparison:
             action["parameters"] = {"comparison": comparison}
     elif action_name == "validate_marker":
-        marker = discovered_markers[0] if discovered_markers else "NPPA"
-        action["parameters"] = {"marker": marker, "assay": "qPCR"}
+        if task_name == "expert":
+            cluster_markers = _cluster_markers(all_outputs)
+            cluster_sizes = _latest_cluster_sizes(obs)
+            validated_markers = _validated_markers(pipeline_history)
+            validated_subpopulations = _validated_subpopulations(pipeline_history)
+            ordered_clusters = sorted(
+                cluster_markers,
+                key=lambda cluster_id: cluster_sizes.get(cluster_id, 0.0),
+                reverse=True,
+            )
+
+            chosen_cluster = ""
+            chosen_marker = ""
+            for cluster_id in ordered_clusters:
+                markers = [
+                    marker
+                    for marker in cluster_markers.get(cluster_id, [])
+                    if marker not in validated_markers
+                ]
+                if not markers:
+                    continue
+                if cluster_id not in validated_subpopulations:
+                    chosen_cluster = cluster_id
+                    chosen_marker = markers[0]
+                    break
+                if not chosen_marker:
+                    chosen_cluster = cluster_id
+                    chosen_marker = markers[0]
+
+            if not chosen_marker:
+                chosen_marker = discovered_markers[0] if discovered_markers else "MCL1"
+
+            action["parameters"] = {
+                "marker": chosen_marker,
+                "assay": "qPCR",
+                "subpopulation_id": chosen_cluster,
+            }
+        else:
+            marker = discovered_markers[0] if discovered_markers else "NPPA"
+            action["parameters"] = {"marker": marker, "assay": "qPCR"}
     elif action_name == "synthesize_conclusion":
         top_markers = discovered_markers[:6]
         mechanisms = _mechanism_hypotheses(task_name, obs)
