@@ -167,9 +167,12 @@ def check_causal_validity(
             vs.append(
                 RuleViolation(
                     rule_id="marker_claim_without_validation",
-                    severity=Severity.SOFT,
+                    severity=Severity.HARD if is_multiclone_expert else Severity.SOFT,
                     message=(
-                        "Conclusion claims top markers without validating at least "
+                        "Conclusion claims resistant-branch markers without "
+                        "validation; confirm markers before concluding"
+                        if is_multiclone_expert
+                        else "Conclusion claims top markers without validating at least "
                         "one marker"
                     ),
                 )
@@ -225,9 +228,9 @@ def check_causal_validity(
                 vs.append(
                     RuleViolation(
                         rule_id="expert_conclusion_without_clonal_claims",
-                        severity=Severity.SOFT,
+                        severity=Severity.HARD,
                         message=(
-                            "Expert multiclone conclusions should commit to at least "
+                            "Expert multiclone conclusions must commit to at least "
                             "two clone-resolved claims instead of only a flat marker list"
                         ),
                     )
@@ -258,7 +261,7 @@ def check_causal_validity(
             vs.append(
                 RuleViolation(
                     rule_id="expert_single_mechanism_conclusion",
-                    severity=Severity.SOFT,
+                    severity=Severity.HARD,
                     message=(
                         "Conclusion names fewer than two resistant mechanisms in a "
                         "scenario whose ground truth is explicitly multiclonal"
