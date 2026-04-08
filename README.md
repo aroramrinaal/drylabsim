@@ -5,188 +5,274 @@ pinned: true
 app_port: 8000
 base_path: /demo
 tags:
-- openenv
-- RL Environment
-- bioinformatics
-- computational biology
+  - openenv
+  - RL Environment
+  - bioinformatics
+  - computational biology
+  - biology
+  - scientific planning
 colorFrom: green
 colorTo: green
-short_description: LLM Agents plan biological experiment pipelines
+short_description: LLM agents plan noisy biological experiment pipelines
 ---
 
 # DryLabSim
 
-This repository implements an OpenEnv-compatible reinforcement learning environment for planning biological experiment pipelines. The agent does not directly see the true biological state. Instead, it proposes one structured experiment or analysis step at a time, receives a noisy simulated output, and is rewarded for valid, informative, efficient, well-calibrated plans.
+DryLabSim is an OpenEnv-compatible reinforcement learning environment for biological experiment planning. Instead of solving a toy puzzle, an agent must plan a realistic dry-lab and wet-lab pipeline one step at a time under partial observability, noisy outputs, budget constraints, time pressure, and scientific validity rules.
 
-The environment is designed as a partially observable Markov decision process (POMDP) with:
+The core challenge is not just "get the right answer." The agent must:
+- choose scientifically valid next steps
+- deal with incomplete and noisy intermediate results
+- spend budget and time carefully
+- avoid unsupported causal claims
+- synthesize a final conclusion that matches hidden biological ground truth
 
-- hidden ground-truth biology
-- hidden technical noise and failure conditions
-- visible task metadata, resource usage, step history, and intermediate outputs
-- dense step-wise reward plus terminal reward for conclusion quality
+The environment is graded deterministically with programmatic biology and pipeline scoring. There is no LLM judge in the final score loop.
 
-## How it works
+## Task Difficulties
 
-At a high level, each episode looks like this:
+DryLabSim currently ships with four benchmark tasks:
 
-1. `reset()` picks a biological scenario and seeds the simulator.
-2. The agent receives an `ExperimentObservation` describing the task and current visible state.
-3. The agent submits an `ExperimentAction` such as `collect_sample`, `run_qc`, or `differential_expression`.
-4. The rule engine checks whether the action is valid at this point in the pipeline.
-5. The transition engine updates hidden state, spends resources, and asks the output generator to simulate the result.
-6. The reward computer scores the step for validity, ordering, information gain, efficiency, novelty, and penalties.
-7. The environment returns a new observation with updated history, outputs, discoveries, violations, and reward.
-8. The episode ends when the agent synthesizes a conclusion, exhausts resources, or reaches the step limit.
+| task | difficulty | tissue | focus |
+|---|---|---|---|
+| `cardiac_disease_de` | easy | heart | recover differential expression and validate markers in dilated cardiomyopathy |
+| `hematopoiesis_trajectory` | medium | bone marrow | reconstruct branching hematopoietic trajectories and regulatory drivers |
+| `perturbation_immune` | hard | synovial fluid | explain how JAK inhibition shifts immune cell state in rheumatoid arthritis |
+| `venetoclax_resistance_multiclone` | expert | bone marrow | disentangle parallel AML resistance mechanisms across multiple post-treatment subclones |
 
-### `server/tasks/`
+Why these tasks are interesting:
+- they cover differential expression, trajectory inference, perturbation analysis, and multiclone resistance reasoning
+- each task has hidden biological truth plus hidden technical noise
+- the expert task includes adversarial structure, including a distractor clone that should not be overclaimed as resistance
 
-This is where episodes come from.
+## Why This Environment Is Strong for a Hackathon
 
-- `scenarios.py` defines a curated library of four biological scenarios as `Scenario` dataclass objects, each bundling a `TaskSpec`, a `LatentBiologicalState`, a `TechnicalState`, hidden failure conditions, and tags
-- `generator.py` turns a scenario into a `(TaskSpec, FullLatentState)` pair via `TaskGenerator.generate()`; optional domain randomisation perturbs budget (±30%), time (±20%), technical noise, batch effects, cell proportions, and effect sizes
+- **Real planning problem**: the agent chooses structured scientific actions instead of generating free-form text only.
+- **Partial observability**: hidden biology, hidden failure modes, and noisy outputs make planning non-trivial.
+- **Deterministic grading**: `server/grader/grade.py` computes a reproducible final score from pipeline quality, biology recovery, and efficiency.
+- **Scientifically grounded tasks**: scenarios encode true DE genes, pathways, regulatory programs, trajectory structure, and causal mechanisms.
+- **Human-demo ready**: the project exposes a custom browser demo at `/demo` in addition to the OpenEnv server routes.
 
-The four scenarios are:
+## Quick Start
 
-| Name | Difficulty | Tissue | Problem | Budget | Time |
-|---|---|---|---|---|---|
-| `cardiac_disease_de` | easy | heart | Differential expression between healthy and dilated cardiomyopathy cardiomyocytes | $80 K | 120 days |
-| `hematopoiesis_trajectory` | medium | bone marrow | Infer HSC → mature lineage trajectory with three branches | $100 K | 150 days |
-| `perturbation_immune` | hard | synovial fluid | JAK inhibitor effect on T-cell states in rheumatoid arthritis | $120 K | 180 days |
-| `venetoclax_resistance_multiclone` | expert | bone marrow | Resolve parallel venetoclax resistance mechanisms across AML subclones | $85 K | 130 days |
+The simplest local workflow is:
 
-Each scenario carries paper references with DOIs, true DE genes with log2FC values, true pathway activities, true regulatory networks, and ground-truth causal mechanisms used for terminal reward calibration.
-
-### `server/simulator/`
-
-This is the simulator itself.
-
-- `latent_state.py` defines `FullLatentState`, the root aggregate of all hidden state. Key sub-structures are `LatentBiologicalState` (true DE genes, pathways, gene programs, trajectory, regulatory network, markers, causal mechanisms), `TechnicalState` (dropout, doublets, ambient RNA, sample quality), `ExperimentProgress` (18 boolean milestone flags plus counts), and `ResourceState` (internal budget and time tracking with exhaustion properties)
-- `noise.py` centralises stochasticity in `NoiseModel`. All randomness flows through a single seeded `numpy.Generator`. Methods include `add_expression_noise`, `sample_effect_sizes`, `sample_p_values`, `generate_false_positives`, `generate_false_negatives`, `quality_degradation`, `sample_qc_metric`, `sample_cluster_count`, `shuffle_ranking`, and `coin_flip`
-- `output_generator.py` turns an action plus hidden state into a realistic `IntermediateOutput`. Every action type has a dedicated handler conditioned on the latent state; noise is then injected — dropout in expression data, false positives and false negatives in DE and marker results, over/under-clustering, and pathway contamination
-- `transition.py` applies action costs from `ACTION_COSTS`, updates progress flags, calls the output generator, degrades quality on soft violations, propagates discovered DE genes and cluster names back into latent state, and decides whether the episode is done
-
-The output generator does not simply echo the action. It conditions outputs on the hidden state, then injects realistic noise.
-
-### `server/rules/engine.py`
-
-The rule engine enforces scientific and procedural constraints before each action is applied.
-
-- hard violations block the action entirely
-- soft violations allow the action, but reduce output quality and add reward penalties
-
-The five rule families are:
-
-1. **Prerequisites (HARD)** — each computational step requires the appropriate upstream milestone flag. For example: `normalize_data` requires `data_filtered`, `differential_expression` requires `data_normalized`, `validate_marker` requires `markers_discovered`
-2. **Resource constraints (HARD)** — budget or time exhausted, or action cost exceeding remaining budget, all block the action
-3. **Redundancy (HARD)** — repeating an already-completed step such as `run_qc` or `normalize_data` is blocked
-4. **Causal validity (HARD/SOFT)** — synthesizing conclusions without prior DE, clustering, marker, or mechanism evidence is blocked; unsupported causal claims and pathway enrichment before DE are soft warnings
-5. **Tool compatibility (HARD)** — checks that the requested action is compatible with available tools and modalities
-
-### `server/rewards/reward.py`
-
-Rewards are decomposed rather than being a single opaque number.
-
-Per-step reward formula:
-
-```
-R_t = r_validity + r_ordering + r_info_gain + r_efficiency + r_novelty + r_penalty + γ[φ(s_{t+1}) − φ(s_t)]
+```bash
+uv sync --extra dev
+uv run --project . server --host 0.0.0.0 --port 8000
 ```
 
-| Component | Weight | Description |
-|---|---|---|
-| `validity` | 0.3 | `1.0` if output succeeded, `−1.0` if hard violation |
-| `ordering` | 0.2 | `1.0` if natural next step, `0.3` otherwise |
-| `info_gain` | 0.4 | `quality_score × (1 − uncertainty)` |
-| `efficiency` | 0.3 | `max(0, 1 − 5 × budget_fraction_used)` |
-| `novelty` | +0.1 | Bonus when no soft violations |
-| `penalty` | −0.15/violation | Per soft violation |
-| `shaping` | γ = 0.99 | Potential-based over 12 progress milestones |
+Then open:
+- `http://localhost:8000/demo` for the custom demo UI
+- `http://localhost:8000/docs` for the FastAPI docs
+- `http://localhost:8000/reset`, `http://localhost:8000/step`, and `http://localhost:8000/state` for the core environment API
 
-Terminal reward adds:
+You can also connect from Python:
 
-| Component | Weight | Description |
-|---|---|---|
-| Pipeline completeness | 3.0 | Fraction of 7 core milestones completed |
-| Calibration | 4.0 | How well conclusions match hidden markers and mechanisms |
-| Budget + time efficiency | 1.0 | Average fraction of budget and time remaining |
-| Overconfidence penalty | −0.5/claim | For high-confidence claims (`> 0.8`) that are wrong |
+```python
+from drylabsim import BioExperimentEnv, ExperimentAction
 
-This makes the environment easier to debug, benchmark, and train against.
+with BioExperimentEnv(base_url="http://localhost:8000") as env:
+    result = env.reset(task_name="easy")
+    print(result.observation.task.problem_statement)
 
-### `server/drylabsim_environment.py`
+    result = env.step(
+        ExperimentAction(
+            action_type="collect_sample",
+            parameters={"n_samples": 6},
+            justification="Start the pipeline by collecting material for downstream profiling.",
+            confidence=0.8,
+        )
+    )
 
-This is the orchestration layer that ties everything together.
+    print(result.observation.latest_output.summary)
+    print(result.reward)
+```
 
-On `reset()` it:
+## Running Locally
 
-- seeds the noise model
-- generates a task and latent state via `TaskGenerator`
-- clears history, outputs, discoveries, conclusions, and cumulative reward
+If you want to inspect the environment without Docker:
 
-On `step()` it:
+```bash
+uv sync --extra dev
+uv run --project . server --host 0.0.0.0 --port 8000
+```
 
-- checks rules
-- calls the transition engine
-- computes reward
-- appends a `PipelineStepRecord`
-- updates discovered markers and candidate mechanisms
-- stores conclusion claims if the action is `synthesize_conclusion`
-- builds the next `ExperimentObservation`
+If you prefer `uvicorn` directly:
 
-This file is the best place to read if you want the end-to-end control flow.
+```bash
+uv run uvicorn server.app:app --host 0.0.0.0 --port 8000 --reload
+```
 
-## What actually happens on one step
+The root route redirects to `/demo`, which makes the repo easier to show to judges immediately.
 
-Here is the concrete order of operations for `env.step(action)`:
+## Project Commands
 
-1. Increment the step counter.
-2. Copy the previous latent state for reward comparison.
-3. Run rule checks and split violations into hard vs soft.
-4. If there is a hard violation, return a failure report without applying the action.
-5. Otherwise deduct budget and time based on `ACTION_COSTS`.
-6. Update latent progress flags like `samples_collected`, `qc_performed`, or `de_performed`.
-7. Generate a structured simulated output for the chosen action.
-8. If there were soft violations, degrade output quality (×0.5) and attach warnings.
-9. Propagate artifacts back into latent state, such as discovered DE genes or cluster names.
-10. Compute decomposed reward from state transition plus output quality.
-11. If the episode is ending, compute terminal reward from completeness and conclusion calibration.
-12. Return an observation that exposes the visible summary but not the hidden truth.
+These are the project-specific commands currently used in this repo:
 
-## Action costs
+```bash
+# OpenEnv validation
+openenv validate --verbose
 
-Each action deducts from the episode's budget and time. Computational steps also accrue compute hours.
+# Run tests
+uv run --project . python -m pytest tests -q
 
-| Action | Budget | Time (days) |
-|---|---|---|
-| `sequence_cells` | $15,000 | 5 |
-| `prepare_library` | $8,000 | 3 |
-| `collect_sample` | $5,000 | 7 |
-| `validate_marker` | $5,000 | 14 |
-| `culture_cells` | $3,000 | 14 |
-| `perturb_gene` | $2,000 | 3 |
-| `perturb_compound` | $1,000 | 2 |
-| `select_cohort` | $500 | 1 |
-| `run_qc` | $100 | 0.5 |
-| `integrate_batches` | $300 | 1 |
-| `regulatory_network_inference` | $200 | 1 |
-| `cluster_cells` | $150 | 0.5 |
-| `differential_expression`, `trajectory_analysis`, `pathway_enrichment` | $100–200 | 0.5–1 |
-| `filter_data`, `normalize_data`, `marker_selection` | $50–100 | 0.25–0.5 |
-| `synthesize_conclusion`, `design_followup_experiment`, `request_subagent_review` | $0 | 0.25–0.5 |
+# Docker build
+docker build -t drylabsim:latest -f server/Dockerfile .
 
-## Why this is useful
+# Docker run
+docker run --rm -p 8000:8000 drylabsim:latest
+```
 
-This environment is trying to model a realistic scientific planning loop rather than a toy decision problem:
+## Docker
 
-- actions have prerequisites
-- outputs are noisy and imperfect
-- budget and time matter
-- not every correct-looking answer is well supported
-- final conclusions are scored against hidden ground truth
+Build the image from the project root:
 
-That makes it suitable for:
+```bash
+docker build -t drylabsim:latest -f server/Dockerfile .
+```
 
-- agent planning benchmarks
-- RL experiments on long-horizon scientific reasoning
-- literature-grounded evaluation
-- comparing structured policies against LLM-driven planners
+Run it locally:
+
+```bash
+docker run --rm -p 8000:8000 drylabsim:latest
+```
+
+After startup, visit `http://localhost:8000/demo`.
+
+## Deploying to Hugging Face Spaces
+
+This repo is structured as an OpenEnv environment and includes [`openenv.yaml`](/Users/mrinaalarora/Developer/open-source/drylabsim/openenv.yaml), so deployment is straightforward:
+
+```bash
+openenv push
+```
+
+Useful variants:
+
+```bash
+openenv push --namespace my-org --private
+openenv push --repo-id my-org/drylabsim
+```
+
+## Environment Details
+
+### Action
+
+`ExperimentAction` is a structured planning step with:
+- `action_type`: the next scientific action to take
+- `method`: optional named tool or protocol such as `Seurat` or `CellRanger`
+- `parameters`: action-specific details such as comparisons, perturbation targets, or claims
+- `justification`: optional scientific rationale
+- `confidence`: agent calibration in `[0, 1]`
+
+Representative action types include:
+- wet-lab: `collect_sample`, `prepare_library`, `sequence_cells`, `validate_marker`
+- computational: `run_qc`, `filter_data`, `normalize_data`, `cluster_cells`, `differential_expression`, `trajectory_analysis`, `pathway_enrichment`, `regulatory_network_inference`, `marker_selection`
+- meta: `design_followup_experiment`, `request_subagent_review`, `synthesize_conclusion`
+
+### Observation
+
+`ExperimentObservation` exposes the visible state only:
+- `task`: task specification, modality, tissue, budget, time limit, and success criteria
+- `pipeline_history`: previous successful and failed steps
+- `resource_usage`: budget, time, samples, and compute consumed so far
+- `latest_output` and `all_outputs`: noisy simulated outputs from prior actions
+- `discovered_markers` and `candidate_mechanisms`: evidence accumulated so far
+- `rule_violations`: hard or soft scientific/procedural violations
+- `conclusions`: structured claims submitted by the agent
+
+The true latent biology is hidden from the agent and kept inside the simulator.
+
+### Reward and Grading
+
+DryLabSim has two scoring layers:
+
+1. **Dense per-step reward**
+   The environment gives step-wise reward for validity, ordering, information gain, efficiency, novelty, and penalties.
+
+2. **Deterministic terminal grading**
+   [`server/grader/grade.py`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/grader/grade.py) combines:
+   - pipeline completeness: `0.30`
+   - biology recovery: `0.55`
+   - efficiency: `0.15`
+
+Important grading properties:
+- final grading is deterministic and reproducible
+- the expert AML task applies extra caps if the agent misses parallel resistant clones, skips integration or validation, or overclaims a distractor clone
+- conclusions are rewarded for calibration, not just confidence
+
+## How an Episode Works
+
+At a high level:
+
+1. `reset()` selects a scenario and seeds the simulator.
+2. The agent receives a partial observation with task metadata and visible history.
+3. The agent submits one structured action.
+4. The rule engine checks prerequisites, redundancy, resource limits, causal validity, and tool compatibility.
+5. The transition engine updates hidden state and generates a noisy intermediate output.
+6. The reward computer scores the step.
+7. The environment returns the next observation.
+8. The episode ends when the agent synthesizes a conclusion, exhausts resources, or hits the step limit.
+
+This creates a POMDP where the agent has to plan, adapt, and calibrate instead of following a perfectly observed pipeline.
+
+## Inference Entrypoint
+
+[`inference.py`](/Users/mrinaalarora/Developer/open-source/drylabsim/inference.py) is the hackathon inference entrypoint. It:
+- connects to the environment over HTTP
+- drives the environment step-by-step
+- prints machine-parseable `[START]`, `[STEP]`, and `[END]` lines
+- supports `easy`, `medium`, `hard`, and `expert` task aliases
+
+Environment variables used by the baseline include:
+- `API_BASE_URL`
+- `HF_TOKEN` or `API_KEY`
+- `MODEL_NAME`
+- `ENV_URL`
+
+## Project Structure
+
+```text
+drylabsim/
+├── README.md
+├── __init__.py                  # Package exports
+├── client.py                    # OpenEnv client for the environment
+├── inference.py                 # Hackathon inference entrypoint
+├── models.py                    # Action, observation, task, tool, and claim schemas
+├── openenv.yaml                 # OpenEnv manifest and task registration
+├── pyproject.toml               # Package metadata and dependencies
+├── tests/                       # API, environment, rewards, simulator, and grader tests
+├── server/
+│   ├── app.py                   # FastAPI app and session-backed HTTP routes
+│   ├── demo_ui.py               # Demo UI wiring
+│   ├── Dockerfile               # Container image
+│   ├── drylabsim_environment.py # Main environment orchestration
+│   ├── biology/                 # Biology utilities and gene index support
+│   ├── grader/                  # Deterministic terminal grading
+│   ├── rewards/                 # Dense reward computation and breakdowns
+│   ├── rules/                   # Validity, prerequisite, redundancy, and resource checks
+│   ├── simulator/               # Latent state, transitions, noise, and output generation
+│   ├── tasks/                   # Scenario generation and benchmark task library
+│   └── demo/                    # Browser-based demo assets
+└── .context/
+    └── commands.md              # Project command reference
+```
+
+## Core Scientific Components
+
+- [`server/tasks/`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/tasks) defines the benchmark scenarios and optional domain randomization.
+- [`server/simulator/`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/simulator) holds the hidden biological state, stochastic noise model, transition logic, and output synthesis.
+- [`server/rules/engine.py`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/rules/engine.py) enforces scientific sequencing and resource validity.
+- [`server/rewards/`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/rewards) computes dense reward components.
+- [`server/grader/`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/grader) scores final episodes deterministically for benchmark evaluation.
+
+## Why It Matters
+
+DryLabSim is meant to benchmark a harder class of agent behavior than one-shot QA or static tool use. It evaluates whether an agent can plan a scientific investigation under uncertainty, gather evidence in the right order, use resources wisely, and end with a conclusion that is both informative and calibrated.
+
+That makes it a good fit for:
+- RL on long-horizon scientific planning
+- evaluating LLM agents in realistic bioinformatics workflows
+- benchmarking structured reasoning under partial observability
+- comparing planning policies, tool strategies, and conclusion calibration
