@@ -392,10 +392,3 @@ class BioExperimentEnvironment(Environment):
                 if isinstance(p, dict) and p["pathway"] not in existing:
                     self._candidate_mechanisms.append(p["pathway"])
                     existing.add(p["pathway"])
-        inferred_mechanisms = output.data.get("inferred_mechanisms", [])
-        if inferred_mechanisms:
-            existing = set(self._candidate_mechanisms)
-            for mechanism in inferred_mechanisms:
-                if mechanism and mechanism not in existing:
-                    self._candidate_mechanisms.append(mechanism)
-                    existing.add(mechanism)

@@ -30,6 +30,39 @@ except ImportError:
     from server.simulator.latent_state import FullLatentState
 
 
+def _dedupe_nonempty(items: List[str]) -> List[str]:
+    seen = set()
+    deduped: List[str] = []
+    for item in items:
+        norm = item.strip().upper()
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        deduped.append(item)
+    return deduped
+
+
+def _marker_precision_factor(predicted: List[str], truth: List[str]) -> float:
+    deduped_pred = _dedupe_nonempty(predicted)
+    if not deduped_pred:
+        return 0.0
+    return min(1.0, (len(truth) * 2.0) / max(len(deduped_pred), 1))
+
+
+def _confounder_penalty(
+    predicted_pathways: Dict[str, float],
+    confounders: Dict[str, float],
+) -> float:
+    if not predicted_pathways or not confounders:
+        return 0.0
+
+    confounder_names = {name.strip().lower() for name in confounders}
+    overlap = sum(
+        1 for pathway in predicted_pathways if pathway.strip().lower() in confounder_names
+    )
+    return min(0.5, 0.15 * overlap)
+
+
 def score_biology(
     state: FullLatentState,
     discovered_markers: List[str],
@@ -67,7 +100,10 @@ def score_biology(
     if not pred_mechs and candidate_mechanisms:
         pred_mechs = list(candidate_mechanisms)
 
-    m_score = marker_set_score(pred_markers, true_markers) if true_markers else 0.0
+    m_score = 0.0
+    if true_markers:
+        marker_recall = marker_set_score(pred_markers, true_markers)
+        m_score = marker_recall * _marker_precision_factor(pred_markers, true_markers)
     mech_score = (
         mechanism_set_score(pred_mechs, true_mechanisms) if true_mechanisms else 0.0
     )
@@ -93,4 +129,11 @@ def score_biology(
     if total_weight == 0.0:
         return 0.0
 
-    return weighted / total_weight
+    score = weighted / total_weight
+    score -= _confounder_penalty(pred_pathways, state.biology.confounders)
+
+    if conclusions and any(c.top_markers for c in conclusions):
+        if not state.progress.markers_validated:
+            score *= 0.7
+
+    return max(0.0, min(1.0, score))

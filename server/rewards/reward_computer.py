@@ -183,7 +183,7 @@ class RewardComputer:
         eff_bonus = (budget_eff + time_eff) / 2.0 if comp >= 0.3 else 0.0
         rb.terminal = (
             3.0 * comp
-            + 4.0 * cal
+            + 2.5 * cal
             + 1.0 * eff_bonus
             + overconf
             + discovery_error_penalty

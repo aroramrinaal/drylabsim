@@ -106,7 +106,7 @@ def pathway_similarity(g1: str, g2: str) -> float:
 def marker_set_score(
     predicted: List[str],
     truth: List[str],
-    sigma: float = 0.3,
+    sigma: float = 0.2,
 ) -> float:
     """Pathway-weighted Gaussian set similarity for marker genes.
 

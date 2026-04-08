@@ -145,10 +145,8 @@ class TestMetaActionTiming:
             pathways_analyzed=True,
         )
         s.scenario_name = "venetoclax_resistance_multiclone"
-        s.discovered_clusters = ["MCL1_resistant_clone", "JAK2_STAT5_resistant_clone"]
-        s.mechanism_confidence = {
-            "An MCL1/BCL2A1 anti-apoptotic escape program sustains one resistant AML subclone under venetoclax pressure": 0.8,
-        }
+        s.discovered_clusters = ["cluster_1", "cluster_2"]
+        s.discovered_clone_markers = {"subpopulation_0": ["MCL1"]}
         violations = engine.check(
             ExperimentAction(action_type=ActionType.SYNTHESIZE_CONCLUSION),
             s,
@@ -156,7 +154,83 @@ class TestMetaActionTiming:
         hard = engine.hard_violations(violations)
         assert any("trajectory" in m.lower() for m in hard)
         assert any("regulatory" in m.lower() or "wiring" in m.lower() for m in hard)
-        assert any("both resistant mechanisms" in m.lower() for m in hard)
+        assert any("marker-supported evidence" in m.lower() for m in hard)
+
+    def test_strict_scenario_requires_mechanism_claims(self):
+        engine = RuleEngine()
+        s = _state(
+            data_normalized=True,
+            cells_clustered=True,
+            de_performed=True,
+            markers_discovered=True,
+            pathways_analyzed=True,
+        )
+        s.scenario_name = "perturbation_immune"
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                parameters={"claims": [{"top_markers": ["STAT1"], "evidence_steps": [3, 4]}]},
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert any("causal mechanism" in m.lower() for m in hard)
+
+    def test_mechanism_claims_require_evidence_steps(self):
+        engine = RuleEngine()
+        s = _state(
+            data_normalized=True,
+            cells_clustered=True,
+            de_performed=True,
+            markers_discovered=True,
+            pathways_analyzed=True,
+        )
+        s.scenario_name = "perturbation_immune"
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                parameters={
+                    "claims": [
+                        {
+                            "top_markers": ["STAT1"],
+                            "causal_mechanisms": ["JAK-STAT pathway inhibition"],
+                            "evidence_steps": [],
+                        }
+                    ]
+                },
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert any("evidence_steps" in m.lower() for m in hard)
+
+    def test_marker_claim_without_validation_is_soft_violation(self):
+        engine = RuleEngine()
+        s = _state(
+            data_normalized=True,
+            cells_clustered=True,
+            de_performed=True,
+            markers_discovered=True,
+            pathways_analyzed=True,
+        )
+        s.scenario_name = "perturbation_immune"
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                parameters={
+                    "claims": [
+                        {
+                            "top_markers": ["STAT1"],
+                            "causal_mechanisms": ["JAK-STAT pathway inhibition"],
+                            "evidence_steps": [4, 5],
+                        }
+                    ]
+                },
+            ),
+            s,
+        )
+        soft = engine.soft_violations(violations)
+        assert any("validating at least one marker" in m.lower() for m in soft)
 
 
 class TestResourceConstraints:

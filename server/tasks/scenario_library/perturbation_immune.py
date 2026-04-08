@@ -40,8 +40,8 @@ def perturbation_immune() -> Scenario:
             organism="human",
             tissue="synovial_fluid",
             conditions=["untreated_RA", "JAK_inhibitor_treated"],
-            budget_limit=120_000.0,
-            time_limit_days=180.0,
+            budget_limit=80_000.0,
+            time_limit_days=120.0,
             prior_observations=[
                 "Elevated JAK-STAT signalling observed in prior bulk RNA-seq",
             ],
@@ -121,6 +121,8 @@ def perturbation_immune() -> Scenario:
                 "Th17_differentiation": 0.4,
                 "cytokine_signalling": 0.45,
                 "regulatory_T_cell_function": 0.7,
+                "negative_feedback_of_cytokine_signalling": 0.76,
+                "immune_state_rebalancing": 0.72,
             },
             perturbation_effects={
                 "JAK_inhibitor": {
@@ -131,7 +133,23 @@ def perturbation_immune() -> Scenario:
                     "SOCS1": 1.2,
                 },
             },
-            true_markers=["STAT1", "SOCS1", "IFNG"],
+            confounders={
+                "TNF_NFkB_signalling": 0.83,
+                "interferon_response": 0.78,
+                "antigen_presentation": 0.74,
+            },
+            true_markers=[
+                "STAT1",
+                "STAT3",
+                "SOCS1",
+                "SOCS3",
+                "IFNG",
+                "TBX21",
+                "IL17A",
+                "RORC",
+                "FOXP3",
+                "IL10",
+            ],
             causal_mechanisms=[
                 "JAK-STAT pathway inhibition reduces Th1/Th17 activation",
                 "Compensatory Treg expansion under JAK inhibition",

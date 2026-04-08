@@ -32,6 +32,22 @@ def _is_multiclone_expert(s: FullLatentState) -> bool:
     )
 
 
+def _clone_alias_map(s: FullLatentState) -> Dict[str, str]:
+    return {
+        clone_name: f"subpopulation_{idx}"
+        for idx, clone_name in enumerate(s.biology.clone_truth.keys())
+    }
+
+
+def _minor_clone_name(s: FullLatentState) -> str | None:
+    if not s.biology.clone_truth:
+        return None
+    return min(
+        s.biology.clone_truth.items(),
+        key=lambda item: item[1].get("size", 1.0),
+    )[0]
+
+
 def trajectory_analysis(
     gen, action: ExperimentAction, s: FullLatentState, idx: int
 ) -> IntermediateOutput:
@@ -40,17 +56,22 @@ def trajectory_analysis(
     if _is_multiclone_expert(s):
         integrated = s.progress.batches_integrated
         clone_truth = s.biology.clone_truth
+        clone_aliases = _clone_alias_map(s)
+        minor_clone = _minor_clone_name(s)
         clone_lineages = {}
         branch_confidence: Dict[str, float] = {}
         for clone_name, truth in clone_truth.items():
             conf = 0.80 if clone_name == "MCL1_resistant_clone" else (
                 0.68 if integrated else 0.45
             )
-            clone_lineages[clone_name] = {
-                "path": ["AML_founder_blast", clone_name],
+            clone_alias = clone_aliases[clone_name]
+            clone_lineages[clone_alias] = {
+                "path": ["founder_like_state", clone_alias],
                 "detected": conf > 0.5,
             }
-            branch_confidence[clone_name] = conf
+            if clone_name == minor_clone and not integrated:
+                clone_lineages[clone_alias]["detected"] = False
+            branch_confidence[clone_alias] = conf
 
         return IntermediateOutput(
             output_type=OutputType.TRAJECTORY_RESULT,
@@ -59,17 +80,17 @@ def trajectory_analysis(
                 0.85 if integrated else 0.67,
                 [0.95 if integrated else 0.8],
             ),
-            summary="Trajectory analysis supports divergence from a shared founder blast into parallel resistant branches",
+            summary="Trajectory analysis supports divergence from a shared founder-like state into multiple resistant branches",
             data={
                 "method": action.method or "monocle3",
-                "n_lineages": 2,
+                "n_lineages": len(clone_truth),
                 "pseudotime_range": [0.0, 1.0],
                 "branching_detected": True,
                 "clone_lineages": clone_lineages,
                 "branch_confidence": branch_confidence,
-                "minor_branch_detected": branch_confidence.get(
-                    "JAK2_STAT5_resistant_clone", 0.0
-                ) > 0.5,
+                "minor_branch_detected": (
+                    branch_confidence.get(clone_aliases.get(minor_clone or ""), 0.0) > 0.5
+                ),
             },
             uncertainty=0.18 if integrated else 0.36,
             artifacts_available=["pseudotime_values", "lineage_graph"],
@@ -118,14 +139,14 @@ def pathway_enrichment(
     if _is_multiclone_expert(s):
         clone_truth = s.biology.clone_truth
         integrated = s.progress.batches_integrated
+        clone_aliases = _clone_alias_map(s)
+        minor_clone = _minor_clone_name(s)
         clone_pathways: Dict[str, Any] = {}
         flattened: List[Dict[str, Any]] = []
-        inferred_mechanisms: List[str] = []
-        mechanism_confidence: Dict[str, float] = {}
         for clone_name, truth in clone_truth.items():
             pathway_scores = truth.get("pathways", {})
             clone_detected = not (
-                clone_name == "JAK2_STAT5_resistant_clone" and not integrated
+                clone_name == minor_clone and not integrated
             )
             clone_top = [
                 {
@@ -139,19 +160,34 @@ def pathway_enrichment(
                     pathway_scores.items(), key=lambda kv: kv[1], reverse=True
                 )
             ]
-            clone_pathways[clone_name] = {
+            clone_pathways[clone_aliases[clone_name]] = {
                 "detected": clone_detected,
                 "top_pathways": clone_top,
             }
             if clone_detected:
-                inferred_mechanisms.append(truth.get("mechanism", ""))
-                mechanism_confidence[truth.get("mechanism", "")] = (
-                    0.83 if clone_name == "MCL1_resistant_clone" else (
-                        0.70 if integrated else 0.48
-                    )
-                )
                 for item in clone_top[:2]:
-                    flattened.append({**item, "clone": clone_name})
+                    flattened.append(
+                        {**item, "subpopulation": clone_aliases[clone_name]}
+                    )
+
+        for pathway, activity in sorted(
+            s.biology.confounders.items(),
+            key=lambda kv: kv[1],
+            reverse=True,
+        ):
+            flattened.append(
+                {
+                    "pathway": pathway,
+                    "score": round(
+                        activity
+                        + float(gen.noise.rng.normal(0, 0.05 if integrated else 0.10)),
+                        3,
+                    ),
+                    "subpopulation": "mixed_signal",
+                }
+            )
+
+        flattened.sort(key=lambda item: item.get("score", 0.0), reverse=True)
 
         return IntermediateOutput(
             output_type=OutputType.PATHWAY_RESULT,
@@ -160,13 +196,11 @@ def pathway_enrichment(
                 0.88 if integrated else 0.69,
                 [0.95 if integrated else 0.8],
             ),
-            summary="Pathway enrichment splits the relapse program into branch-specific survival mechanisms",
+            summary="Pathway enrichment highlights multiple relapse-associated programs with residual mixed-signal confounders",
             data={
                 "method": action.method or "GSEA",
                 "top_pathways": flattened[:10],
                 "clone_pathways": clone_pathways,
-                "inferred_mechanisms": inferred_mechanisms,
-                "mechanism_confidence": mechanism_confidence,
             },
             uncertainty=0.19 if integrated else 0.35,
             artifacts_available=["enrichment_table", "clone_enrichment_table"],
@@ -185,6 +219,9 @@ def pathway_enrichment(
     observed: Dict[str, float] = {}
     for pw, activity in true_pathways.items():
         observed[pw] = activity + float(gen.noise.rng.normal(0, noise_level))
+
+    for pw, activity in s.biology.confounders.items():
+        observed[pw] = activity + float(gen.noise.rng.normal(0, noise_level * 0.8))
 
     for i in range(gen.noise.sample_count(n_fp_mean)):
         observed[f"FP_PATHWAY_{i}"] = float(gen.noise.rng.uniform(0.3, 0.6))
@@ -213,29 +250,22 @@ def regulatory_network(
     if _is_multiclone_expert(s):
         clone_truth = s.biology.clone_truth
         integrated = s.progress.batches_integrated
+        clone_aliases = _clone_alias_map(s)
+        minor_clone = _minor_clone_name(s)
         clone_regulators: Dict[str, Any] = {}
         top_regulators: List[str] = []
-        inferred_mechanisms: List[str] = []
-        mechanism_confidence: Dict[str, float] = {}
         for clone_name, truth in clone_truth.items():
             regulators = list(truth.get("regulators", []))
             clone_detected = not (
-                clone_name == "JAK2_STAT5_resistant_clone" and not integrated
+                clone_name == minor_clone and not integrated
             )
             shuffled = gen.noise.shuffle_ranking(regulators, 0.3)
-            clone_regulators[clone_name] = {
+            clone_regulators[clone_aliases[clone_name]] = {
                 "detected": clone_detected,
                 "top_regulators": shuffled[:5],
             }
             if clone_detected:
                 top_regulators.extend(shuffled[:3])
-                mechanism = truth.get("mechanism", "")
-                inferred_mechanisms.append(mechanism)
-                mechanism_confidence[mechanism] = (
-                    0.81 if clone_name == "MCL1_resistant_clone" else (
-                        0.73 if integrated else 0.46
-                    )
-                )
 
         return IntermediateOutput(
             output_type=OutputType.NETWORK_RESULT,
@@ -244,15 +274,13 @@ def regulatory_network(
                 0.84 if integrated else 0.68,
                 [0.92 if integrated else 0.78],
             ),
-            summary="Regulatory network inference separates anti-apoptotic and STAT5-driven resistant modules",
+            summary="Regulatory network inference resolves distinct relapse-associated regulon modules",
             data={
                 "method": action.method or "SCENIC",
                 "n_regulons": len(top_regulators) + gen.noise.sample_count(2),
                 "n_edges": 40 + gen.noise.sample_count(10),
                 "top_regulators": top_regulators[:10],
                 "clone_regulators": clone_regulators,
-                "inferred_mechanisms": inferred_mechanisms,
-                "mechanism_confidence": mechanism_confidence,
             },
             uncertainty=0.22 if integrated else 0.39,
             artifacts_available=["regulon_table", "grn_adjacency", "clone_grn_summary"],
@@ -300,13 +328,15 @@ def marker_selection(
     if _is_multiclone_expert(s):
         clone_truth = s.biology.clone_truth
         integrated = s.progress.batches_integrated
+        clone_aliases = _clone_alias_map(s)
+        minor_clone = _minor_clone_name(s)
         clone_markers: Dict[str, List[str]] = {}
         observed_markers: List[str] = []
         for clone_name, truth in clone_truth.items():
             markers = list(truth.get("markers", []))
-            if clone_name == "JAK2_STAT5_resistant_clone" and not integrated:
+            if clone_name == minor_clone and not integrated:
                 markers = markers[:2]
-            clone_markers[clone_name] = markers
+            clone_markers[clone_aliases[clone_name]] = markers
             observed_markers.extend(markers)
         fp = gen.noise.generate_false_positives(200, 0.01)
         observed_markers.extend(fp)
@@ -318,7 +348,7 @@ def marker_selection(
                 0.86 if integrated else 0.70,
                 [0.9 if integrated else 0.78],
             ),
-            summary="Marker selection recovered clone-resolved resistant markers",
+            summary="Marker selection recovered subgroup-resolved resistant markers",
             data={
                 "markers": deduped[:20],
                 "n_candidates": len(deduped),

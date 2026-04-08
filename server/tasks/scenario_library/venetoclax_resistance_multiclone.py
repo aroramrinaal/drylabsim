@@ -40,8 +40,8 @@ def venetoclax_resistance_multiclone() -> Scenario:
             organism="human",
             tissue="bone_marrow",
             conditions=["pre_treatment", "post_venetoclax_resistant"],
-            budget_limit=150_000.0,
-            time_limit_days=210.0,
+            budget_limit=95_000.0,
+            time_limit_days=140.0,
             prior_observations=[
                 "The patient initially responded to venetoclax-based therapy before relapsing",
                 "Bulk expression suggested both apoptotic rewiring and cytokine signalling, but no single mechanism was definitive",
@@ -49,8 +49,8 @@ def venetoclax_resistance_multiclone() -> Scenario:
             ],
             success_criteria=[
                 "Resolve whether relapse is driven by one resistant state or multiple resistant subclones",
-                "Identify the anti-apoptotic MCL1 program in one resistant branch",
-                "Identify the JAK2-STAT5 survival program in the second resistant branch",
+                "Identify a dominant anti-apoptotic survival program in one resistant branch",
+                "Identify a distinct cytokine-responsive survival program in the second resistant branch",
                 "Synthesize a calibrated conclusion that names both mechanisms without overclaiming certainty for the smaller clone",
             ],
             paper_references=[
@@ -79,18 +79,18 @@ def venetoclax_resistance_multiclone() -> Scenario:
                 ExpectedFinding(
                     finding=(
                         "One resistant branch should show anti-apoptotic escape "
-                        "through MCL1 and BCL2A1."
+                        "through an anti-apoptotic survival program."
                     ),
                     category="mechanism",
-                    keywords=["MCL1", "BCL2A1", "apoptosis_escape"],
+                    keywords=["anti_apoptotic", "survival_program", "escape"],
                 ),
                 ExpectedFinding(
                     finding=(
-                        "The second resistant branch should show JAK2-STAT5-PIM1 "
-                        "survival signalling."
+                        "The second resistant branch should show a cytokine-driven "
+                        "survival signalling program."
                     ),
                     category="mechanism",
-                    keywords=["JAK2", "STAT5", "PIM1", "survival"],
+                    keywords=["cytokine_signalling", "parallel_branch", "survival"],
                 ),
                 ExpectedFinding(
                     finding=(
@@ -177,6 +177,8 @@ def venetoclax_resistance_multiclone() -> Scenario:
             true_pathways={
                 "intrinsic_apoptosis_regulation": 0.88,
                 "JAK_STAT_signalling": 0.84,
+                "cytokine_receptor_signalling": 0.73,
+                "integrated_stress_response": 0.69,
                 "oxidative_phosphorylation": 0.64,
                 "stress_response": 0.58,
             },
@@ -207,19 +209,30 @@ def venetoclax_resistance_multiclone() -> Scenario:
             clone_truth={
                 "MCL1_resistant_clone": {
                     "size": 0.18,
-                    "markers": ["MCL1", "BCL2A1", "SOX4", "IL1RAP"],
+                    "markers": [
+                        "MCL1",
+                        "BCL2A1",
+                        "SOX4",
+                        "IL1RAP",
+                        "BCL2L1",
+                        "DDIT3",
+                    ],
                     "de_genes": {
                         "MCL1": 1.8,
                         "BCL2A1": 1.6,
                         "SOX4": 1.1,
                         "IL1RAP": 1.0,
+                        "BCL2L1": 0.9,
+                        "DDIT3": 0.8,
+                        "EIF2AK3": 0.7,
                         "BCL2": -1.2,
                     },
                     "pathways": {
                         "intrinsic_apoptosis_regulation": 0.95,
+                        "integrated_stress_response": 0.81,
                         "oxidative_phosphorylation": 0.78,
                     },
-                    "regulators": ["CREB1", "ATF4", "MYC"],
+                    "regulators": ["CREB1", "ATF4", "MYC", "XBP1"],
                     "mechanism": (
                         "An MCL1/BCL2A1 anti-apoptotic escape program sustains "
                         "one resistant AML subclone under venetoclax pressure"
@@ -227,19 +240,30 @@ def venetoclax_resistance_multiclone() -> Scenario:
                 },
                 "JAK2_STAT5_resistant_clone": {
                     "size": 0.12,
-                    "markers": ["JAK2", "STAT5A", "PIM1", "SOCS2"],
+                    "markers": [
+                        "JAK2",
+                        "STAT5A",
+                        "PIM1",
+                        "SOCS2",
+                        "CISH",
+                        "BCL2L1",
+                    ],
                     "de_genes": {
                         "JAK2": 1.5,
                         "STAT5A": 1.4,
                         "PIM1": 1.7,
                         "SOCS2": 1.3,
+                        "CISH": 1.1,
+                        "BCL2L1": 0.9,
+                        "IL7R": 0.8,
                         "BCL2": -0.8,
                     },
                     "pathways": {
                         "JAK_STAT_signalling": 0.97,
+                        "cytokine_receptor_signalling": 0.86,
                         "stress_response": 0.62,
                     },
-                    "regulators": ["STAT5A", "JAK2", "MYC"],
+                    "regulators": ["STAT5A", "JAK2", "MYC", "IRF8"],
                     "mechanism": (
                         "A JAK2-STAT5-PIM1 survival program sustains a second "
                         "resistant AML subclone in parallel"
@@ -247,10 +271,22 @@ def venetoclax_resistance_multiclone() -> Scenario:
                 },
             },
             confounders={
-                "bulk_signal_cancellation": 0.85,
-                "minor_clone_underrepresentation": 0.70,
+                "IL6_STAT3_feedback": 0.89,
+                "oxidative_stress_adaptation": 0.84,
+                "inflammatory_cytokine_response": 0.81,
             },
-            true_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1", "SOCS2"],
+            true_markers=[
+                "MCL1",
+                "BCL2A1",
+                "SOX4",
+                "IL1RAP",
+                "DDIT3",
+                "JAK2",
+                "STAT5A",
+                "PIM1",
+                "SOCS2",
+                "CISH",
+            ],
             causal_mechanisms=[
                 "An MCL1/BCL2A1 anti-apoptotic escape program sustains one resistant AML subclone under venetoclax pressure",
                 "A JAK2-STAT5-PIM1 survival program sustains a second resistant AML subclone in parallel",
