@@ -77,7 +77,10 @@ class TestEnvironmentLifecycle:
         assert any("follow-up design" in msg.lower() for msg in obs.rule_violations)
 
     def test_conclusion_ends_episode(self):
-        env = BioExperimentEnvironment()
+        env = BioExperimentEnvironment(
+            scenario_name="cardiac_disease_de",
+            domain_randomise=False,
+        )
         env.reset()
 
         quick_pipeline = [
@@ -113,7 +116,10 @@ class TestEnvironmentLifecycle:
         assert "grade_breakdown" in obs.metadata
 
     def test_blocked_conclusion_does_not_persist_claims(self):
-        env = BioExperimentEnvironment()
+        env = BioExperimentEnvironment(
+            scenario_name="cardiac_disease_de",
+            domain_randomise=False,
+        )
         env.reset()
 
         pipeline = [

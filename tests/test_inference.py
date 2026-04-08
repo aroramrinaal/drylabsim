@@ -19,26 +19,46 @@ class TestInferenceMechanismRecovery:
         }
 
         mechanisms = _mechanism_hypotheses("hard", obs)
-        assert "JAK-STAT pathway inhibition reduces Th1/Th17 activation" in mechanisms
-        assert "Compensatory Treg expansion under JAK inhibition" in mechanisms
+        assert mechanisms == [
+            "Evidence supports pathway-level remodeling involving JAK_STAT_signalling, regulatory_T_cell_function"
+        ]
 
-    def test_expert_fallback_conclusion_uses_inferred_mechanisms(self):
+    def test_expert_fallback_conclusion_uses_cluster_resolved_claims(self):
         obs = {
             "discovered_markers": ["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
             "all_outputs": [
                 {
-                    "output_type": "pathway_result",
+                    "output_type": "cluster_result",
                     "data": {
-                        "top_pathways": [
-                            {"pathway": "intrinsic_apoptosis_regulation", "score": 0.9},
-                            {"pathway": "JAK_STAT_signalling", "score": 0.88},
-                        ]
+                        "cluster_names": ["cluster_0", "cluster_1", "cluster_2"],
+                        "cluster_sizes": [5000, 1800, 1200],
                     },
                 },
                 {
-                    "output_type": "network_result",
+                    "output_type": "pathway_result",
                     "data": {
-                        "top_regulators": ["CREB1", "STAT5A"],
+                        "top_pathways": [{"pathway": "intrinsic_apoptosis_regulation", "score": 0.9}],
+                        "cluster_pathways": {
+                            "cluster_1": {
+                                "top_pathways": [
+                                    {"pathway": "intrinsic_apoptosis_regulation", "score": 0.9}
+                                ]
+                            },
+                            "cluster_2": {
+                                "top_pathways": [
+                                    {"pathway": "JAK_STAT_signalling", "score": 0.88}
+                                ]
+                            },
+                        },
+                    },
+                },
+                {
+                    "output_type": "marker_result",
+                    "data": {
+                        "cluster_markers": {
+                            "cluster_1": ["MCL1", "BCL2A1", "SOX4"],
+                            "cluster_2": ["JAK2", "STAT5A", "PIM1"],
+                        }
                     },
                 },
             ],
@@ -58,3 +78,5 @@ class TestInferenceMechanismRecovery:
         assert len(claim["causal_mechanisms"]) == 2
         assert claim["claim_type"] == "causal"
         assert claim["evidence_steps"] == [9, 10, 11]
+        assert len(claim["clonal_claims"]) == 2
+        assert claim["clone_size_estimates"]["cluster_1"] == 0.225

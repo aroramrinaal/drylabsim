@@ -3,6 +3,7 @@
 import pytest
 from models import (
     ActionType,
+    ClonalClaim,
     ConclusionClaim,
     ExpectedFinding,
     ExperimentAction,
@@ -80,6 +81,15 @@ def test_paper_reference_and_expected_finding_roundtrip():
 def test_conclusion_claim_serialization():
     c = ConclusionClaim(
         claim="NPPA is upregulated in disease",
+        clonal_claims=[
+            ClonalClaim(
+                subpopulation_id="cluster_2",
+                markers=["NPPA", "NPPB"],
+                mechanism="Pathway-level remodeling involving cardiac stress",
+                supporting_pathways=["cardiac_stress_response"],
+            )
+        ],
+        clone_size_estimates={"cluster_2": 0.22},
         evidence_steps=[3, 5],
         confidence=0.85,
         mechanism_confidence={"TGF-beta-driven fibrosis": 0.7},
@@ -89,3 +99,5 @@ def test_conclusion_claim_serialization():
     assert d["claim_type"] == "correlational"
     assert d["confidence"] == 0.85
     assert d["mechanism_confidence"]["TGF-beta-driven fibrosis"] == 0.7
+    assert d["clonal_claims"][0]["subpopulation_id"] == "cluster_2"
+    assert d["clone_size_estimates"]["cluster_2"] == 0.22

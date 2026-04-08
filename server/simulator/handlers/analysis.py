@@ -39,6 +39,39 @@ def _clone_alias_map(s: FullLatentState) -> Dict[str, str]:
     }
 
 
+def _expert_cluster_labels(s: FullLatentState) -> List[str]:
+    background = [
+        p.name
+        for p in s.biology.cell_populations
+        if p.name not in set(s.biology.clone_truth.keys())
+    ]
+    internal_cluster_labels = ["AML_founder_blast", *list(s.biology.clone_truth.keys())]
+    for pop_name in background:
+        if pop_name not in internal_cluster_labels:
+            internal_cluster_labels.append(pop_name)
+
+    integrated = s.progress.batches_integrated
+    minor_clone = _minor_clone_name(s)
+    if not integrated and minor_clone in internal_cluster_labels:
+        internal_cluster_labels.remove(minor_clone)
+        internal_cluster_labels.append("merged_relapse_state")
+    return internal_cluster_labels
+
+
+def _expert_cluster_alias_map(s: FullLatentState) -> Dict[str, str]:
+    labels = _expert_cluster_labels(s)
+    alias_map = {label: f"cluster_{idx}" for idx, label in enumerate(labels)}
+    minor_clone = _minor_clone_name(s)
+    if (
+        not s.progress.batches_integrated
+        and minor_clone
+        and minor_clone not in alias_map
+        and "merged_relapse_state" in alias_map
+    ):
+        alias_map[minor_clone] = alias_map["merged_relapse_state"]
+    return alias_map
+
+
 def _minor_clone_name(s: FullLatentState) -> str | None:
     if not s.biology.clone_truth:
         return None
@@ -65,23 +98,23 @@ def trajectory_analysis(
     if _is_multiclone_expert(s):
         integrated = s.progress.batches_integrated
         clone_truth = s.biology.clone_truth
-        clone_aliases = _clone_alias_map(s)
+        cluster_aliases = _expert_cluster_alias_map(s)
         minor_clone = _minor_clone_name(s)
         dominant_clone = _dominant_clone_name(s)
-        clone_lineages = {}
+        cluster_lineages = {}
         branch_confidence: Dict[str, float] = {}
         for clone_name, truth in clone_truth.items():
             conf = 0.80 if clone_name == dominant_clone else (
                 0.68 if integrated else 0.45
             )
-            clone_alias = clone_aliases[clone_name]
-            clone_lineages[clone_alias] = {
-                "path": ["founder_like_state", clone_alias],
+            cluster_id = cluster_aliases[clone_name]
+            cluster_lineages[cluster_id] = {
+                "path": ["founder_like_state", cluster_id],
                 "detected": conf > 0.5,
             }
             if clone_name == minor_clone and not integrated:
-                clone_lineages[clone_alias]["detected"] = False
-            branch_confidence[clone_alias] = conf
+                cluster_lineages[cluster_id]["detected"] = False
+            branch_confidence[cluster_id] = conf
 
         return IntermediateOutput(
             output_type=OutputType.TRAJECTORY_RESULT,
@@ -96,10 +129,10 @@ def trajectory_analysis(
                 "n_lineages": len(clone_truth),
                 "pseudotime_range": [0.0, 1.0],
                 "branching_detected": True,
-                "clone_lineages": clone_lineages,
+                "cluster_lineages": cluster_lineages,
                 "branch_confidence": branch_confidence,
                 "minor_branch_detected": (
-                    branch_confidence.get(clone_aliases.get(minor_clone or ""), 0.0) > 0.5
+                    branch_confidence.get(cluster_aliases.get(minor_clone or ""), 0.0) > 0.5
                 ),
             },
             uncertainty=0.18 if integrated else 0.36,
@@ -149,9 +182,9 @@ def pathway_enrichment(
     if _is_multiclone_expert(s):
         clone_truth = s.biology.clone_truth
         integrated = s.progress.batches_integrated
-        clone_aliases = _clone_alias_map(s)
+        cluster_aliases = _expert_cluster_alias_map(s)
         minor_clone = _minor_clone_name(s)
-        clone_pathways: Dict[str, Any] = {}
+        cluster_pathways: Dict[str, Any] = {}
         flattened: List[Dict[str, Any]] = []
         for clone_name, truth in clone_truth.items():
             pathway_scores = truth.get("pathways", {})
@@ -170,14 +203,15 @@ def pathway_enrichment(
                     pathway_scores.items(), key=lambda kv: kv[1], reverse=True
                 )
             ]
-            clone_pathways[clone_aliases[clone_name]] = {
+            cluster_id = cluster_aliases[clone_name]
+            cluster_pathways[cluster_id] = {
                 "detected": clone_detected,
                 "top_pathways": clone_top,
             }
             if clone_detected:
                 for item in clone_top[:2]:
                     flattened.append(
-                        {**item, "subpopulation": clone_aliases[clone_name]}
+                        {**item, "cluster_id": cluster_id}
                     )
 
         for pathway, activity in sorted(
@@ -193,7 +227,7 @@ def pathway_enrichment(
                         + float(gen.noise.rng.normal(0, 0.05 if integrated else 0.10)),
                         3,
                     ),
-                    "subpopulation": "mixed_signal",
+                    "cluster_id": "mixed_signal",
                 }
             )
 
@@ -210,10 +244,10 @@ def pathway_enrichment(
             data={
                 "method": action.method or "GSEA",
                 "top_pathways": flattened[:10],
-                "clone_pathways": clone_pathways,
+                "cluster_pathways": cluster_pathways,
             },
             uncertainty=0.19 if integrated else 0.35,
-            artifacts_available=["enrichment_table", "clone_enrichment_table"],
+            artifacts_available=["enrichment_table", "cluster_enrichment_table"],
         )
 
     true_pathways = s.biology.true_pathways
@@ -260,9 +294,9 @@ def regulatory_network(
     if _is_multiclone_expert(s):
         clone_truth = s.biology.clone_truth
         integrated = s.progress.batches_integrated
-        clone_aliases = _clone_alias_map(s)
+        cluster_aliases = _expert_cluster_alias_map(s)
         minor_clone = _minor_clone_name(s)
-        clone_regulators: Dict[str, Any] = {}
+        cluster_regulators: Dict[str, Any] = {}
         top_regulators: List[str] = []
         for clone_name, truth in clone_truth.items():
             regulators = list(truth.get("regulators", []))
@@ -270,7 +304,7 @@ def regulatory_network(
                 clone_name == minor_clone and not integrated
             )
             shuffled = gen.noise.shuffle_ranking(regulators, 0.3)
-            clone_regulators[clone_aliases[clone_name]] = {
+            cluster_regulators[cluster_aliases[clone_name]] = {
                 "detected": clone_detected,
                 "top_regulators": shuffled[:5],
             }
@@ -290,10 +324,10 @@ def regulatory_network(
                 "n_regulons": len(top_regulators) + gen.noise.sample_count(2),
                 "n_edges": 40 + gen.noise.sample_count(10),
                 "top_regulators": top_regulators[:10],
-                "clone_regulators": clone_regulators,
+                "cluster_regulators": cluster_regulators,
             },
             uncertainty=0.22 if integrated else 0.39,
-            artifacts_available=["regulon_table", "grn_adjacency", "clone_grn_summary"],
+            artifacts_available=["regulon_table", "grn_adjacency", "cluster_grn_summary"],
         )
 
     true_net = s.biology.true_regulatory_network
@@ -338,15 +372,16 @@ def marker_selection(
     if _is_multiclone_expert(s):
         clone_truth = s.biology.clone_truth
         integrated = s.progress.batches_integrated
-        clone_aliases = _clone_alias_map(s)
+        cluster_aliases = _expert_cluster_alias_map(s)
         minor_clone = _minor_clone_name(s)
-        clone_markers: Dict[str, List[str]] = {}
+        cluster_markers: Dict[str, List[str]] = {}
         observed_markers: List[str] = []
         for clone_name, truth in clone_truth.items():
             markers = list(truth.get("markers", []))
+            markers.extend(list(truth.get("decoy_markers", []))[:2 if integrated else 3])
             if clone_name == minor_clone and not integrated:
                 markers = markers[:2]
-            clone_markers[clone_aliases[clone_name]] = markers
+            cluster_markers[cluster_aliases[clone_name]] = markers
             observed_markers.extend(markers)
         fp = gen.noise.generate_false_positives(200, 0.01)
         observed_markers.extend(fp)
@@ -362,10 +397,10 @@ def marker_selection(
             data={
                 "markers": deduped[:20],
                 "n_candidates": len(deduped),
-                "clone_markers": clone_markers,
+                "cluster_markers": cluster_markers,
             },
             uncertainty=0.16 if integrated else 0.31,
-            artifacts_available=["marker_list", "clone_marker_list"],
+            artifacts_available=["marker_list", "cluster_marker_list"],
         )
 
     true_markers = list(s.biology.true_markers)

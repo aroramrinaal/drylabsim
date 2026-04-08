@@ -146,7 +146,7 @@ class TestMetaActionTiming:
         )
         s.scenario_name = "venetoclax_resistance_multiclone"
         s.discovered_clusters = ["cluster_1", "cluster_2"]
-        s.discovered_clone_markers = {"subpopulation_0": ["MCL1"]}
+        s.discovered_clone_markers = {"cluster_1": ["MCL1"]}
         violations = engine.check(
             ExperimentAction(action_type=ActionType.SYNTHESIZE_CONCLUSION),
             s,

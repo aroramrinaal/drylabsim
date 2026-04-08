@@ -1293,12 +1293,21 @@ class TaskSpec(BaseModel):
     expected_findings: List[ExpectedFinding] = Field(default_factory=list)
 
 
+class ClonalClaim(BaseModel):
+    subpopulation_id: str = ""
+    markers: List[str] = Field(default_factory=list)
+    mechanism: str = ""
+    supporting_pathways: List[str] = Field(default_factory=list)
+
+
 class ConclusionClaim(BaseModel):
     claim: str = ""
     top_markers: List[str] = Field(default_factory=list)
     causal_mechanisms: List[str] = Field(default_factory=list)
     mechanism_confidence: Dict[str, float] = Field(default_factory=dict)
     predicted_pathways: Dict[str, float] = Field(default_factory=dict)
+    clonal_claims: List[ClonalClaim] = Field(default_factory=list)
+    clone_size_estimates: Dict[str, float] = Field(default_factory=dict)
     evidence_steps: List[int] = Field(default_factory=list)
     confidence: float = Field(0.5, ge=0.0, le=1.0)
     claim_type: str = "correlational"

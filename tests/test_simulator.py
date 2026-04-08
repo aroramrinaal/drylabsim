@@ -139,13 +139,28 @@ class TestOutputGenerator:
         out = gen.generate(action, s, 5)
         assert out.output_type == OutputType.DE_RESULT
         assert out.data["bulk_signal_is_mixed"] is True
-        assert "clone_de" in out.data
-        assert "subpopulation_0" in out.data["clone_de"]
-        assert "subpopulation_1" in out.data["clone_de"]
-        assert "mechanism" not in out.data["clone_de"]["subpopulation_0"]
+        assert "cluster_de" in out.data
+        assert "cluster_1" in out.data["cluster_de"]
+        assert "cluster_2" in out.data["cluster_de"]
+        assert all(not key.startswith("subpopulation_") for key in out.data["cluster_de"])
         assert "relapse_enriched_clusters" not in out.data
 
-    def test_expert_pathway_enrichment_emits_clone_pathways(self):
+    def test_expert_multiclone_de_hides_cluster_specific_results_without_integration(self):
+        noise = NoiseModel(seed=42)
+        gen = OutputGenerator(noise)
+        s = _make_multiclone_state()
+        s.progress.cells_clustered = True
+        s.progress.batches_integrated = False
+        action = ExperimentAction(
+            action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+            parameters={"comparison": "post_vs_pre_bulk"},
+        )
+        out = gen.generate(action, s, 5)
+        assert out.output_type == OutputType.DE_RESULT
+        assert "cluster_de" not in out.data
+        assert any("mixed signal" in warning.lower() for warning in out.warnings)
+
+    def test_expert_pathway_enrichment_emits_cluster_pathways(self):
         noise = NoiseModel(seed=7)
         gen = OutputGenerator(noise)
         s = _make_multiclone_state()
@@ -154,8 +169,8 @@ class TestOutputGenerator:
         action = ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT)
         out = gen.generate(action, s, 6)
         assert out.output_type == OutputType.PATHWAY_RESULT
-        assert "clone_pathways" in out.data
-        assert "subpopulation_0" in out.data["clone_pathways"]
+        assert "cluster_pathways" in out.data
+        assert "cluster_1" in out.data["cluster_pathways"]
         assert "inferred_mechanisms" not in out.data
 
     def test_expert_clustering_omits_relapse_hint_and_noises_sizes(self):

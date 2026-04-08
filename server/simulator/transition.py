@@ -272,7 +272,9 @@ class TransitionEngine:
 
         if action.action_type == ActionType.MARKER_SELECTION:
             s.progress.n_markers_found = output.data.get("n_candidates", 0)
-            clone_markers = output.data.get("clone_markers", {})
+            clone_markers = output.data.get("cluster_markers") or output.data.get(
+                "clone_markers", {}
+            )
             if clone_markers:
                 s.discovered_clone_markers = {
                     clone: list(markers) for clone, markers in clone_markers.items()

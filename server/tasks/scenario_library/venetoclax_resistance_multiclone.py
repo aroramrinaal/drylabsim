@@ -40,17 +40,19 @@ def venetoclax_resistance_multiclone() -> Scenario:
             organism="human",
             tissue="bone_marrow",
             conditions=["pre_treatment", "post_venetoclax_resistant"],
-            budget_limit=95_000.0,
-            time_limit_days=140.0,
+            budget_limit=85_000.0,
+            time_limit_days=130.0,
             prior_observations=[
                 "The patient initially responded to venetoclax-based therapy before relapsing",
                 "Bulk expression suggested both apoptotic rewiring and cytokine signalling, but no single mechanism was definitive",
                 "Relapse marrow shows heterogeneous blast-state remodeling after treatment",
+                "A subset of post-treatment blasts remains highly proliferative, raising concern for a non-mechanistic distractor state",
             ],
             success_criteria=[
                 "Resolve whether relapse is driven by one resistant state or multiple resistant subclones",
                 "Identify a dominant anti-apoptotic survival program in one resistant branch",
                 "Identify a distinct cytokine-responsive survival program in the second resistant branch",
+                "Avoid misclassifying a fast-cycling post-treatment blast cluster as a bona fide resistance mechanism",
                 "Synthesize a calibrated conclusion that names both mechanisms without overclaiming certainty for the smaller clone",
             ],
             paper_references=[
@@ -95,39 +97,57 @@ def venetoclax_resistance_multiclone() -> Scenario:
                 ExpectedFinding(
                     finding=(
                         "Trajectory analysis should support divergence from a shared "
-                        "founder blast state into two distinct resistant branches."
+                        "founder blast state into parallel post-treatment branches, "
+                        "only two of which are resistant."
                     ),
                     category="trajectory",
-                    keywords=["founder", "divergence", "two_branches"],
+                    keywords=["founder", "divergence", "parallel_branches"],
+                ),
+                ExpectedFinding(
+                    finding=(
+                        "A cycling post-treatment blast branch should show a strong "
+                        "proliferation signal but should not be treated as a true "
+                        "venetoclax resistance mechanism."
+                    ),
+                    category="distractor",
+                    keywords=["cycling", "cell_cycle", "distractor", "non_resistant"],
                 ),
             ],
             dataset_metadata={
                 "literature_grounding": "aml_venetoclax_multiclone_resistance",
                 "designed_failure_mode": "bulk_de_confounding",
+                "adversarial_distractor": "cycling_post_treatment_blast",
             },
         ),
         biology=LatentBiologicalState(
             cell_populations=[
                 CellPopulation(
                     name="AML_founder_blast",
-                    proportion=0.30,
+                    proportion=0.24,
                     marker_genes=["FLT3", "KIT", "WT1", "MKI67"],
                     state="proliferative",
                     condition_response={"post_venetoclax_resistant": 0.65},
                 ),
                 CellPopulation(
                     name="MCL1_resistant_clone",
-                    proportion=0.18,
+                    proportion=0.17,
                     marker_genes=["MCL1", "BCL2A1", "SOX4", "IL1RAP"],
                     state="resistant_apoptosis_escape",
                     condition_response={"post_venetoclax_resistant": 1.9},
                 ),
                 CellPopulation(
                     name="JAK2_STAT5_resistant_clone",
-                    proportion=0.12,
+                    proportion=0.11,
                     marker_genes=["JAK2", "STAT5A", "PIM1", "SOCS2"],
                     state="resistant_cytokine_survival",
                     condition_response={"post_venetoclax_resistant": 2.1},
+                ),
+                CellPopulation(
+                    name="cycling_distractor_clone",
+                    proportion=0.08,
+                    marker_genes=["MKI67", "TOP2A", "PCNA", "UBE2C"],
+                    state="cycling_rebound",
+                    condition_response={"post_venetoclax_resistant": 1.55},
                 ),
                 CellPopulation(
                     name="GMP_like",
@@ -169,9 +189,11 @@ def venetoclax_resistance_multiclone() -> Scenario:
                     "STAT5A": 0.8,
                     "PIM1": 1.2,
                     "SOCS2": 1.0,
+                    "TOP2A": 0.9,
+                    "PCNA": 0.7,
                     "BCL2": -0.9,
                     "BCL2L11": -0.5,
-                    "MKI67": -0.4,
+                    "MKI67": 0.8,
                 },
             },
             true_pathways={
@@ -184,17 +206,19 @@ def venetoclax_resistance_multiclone() -> Scenario:
             },
             true_trajectory={
                 "root": "AML_founder_blast",
-                "n_lineages": 2,
+                "n_lineages": 3,
                 "branching": True,
                 "branches": [
                     ["AML_founder_blast", "MCL1_resistant_clone"],
                     ["AML_founder_blast", "JAK2_STAT5_resistant_clone"],
+                    ["AML_founder_blast", "cycling_distractor_clone"],
                 ],
             },
             true_regulatory_network={
                 "CREB1": ["MCL1", "BCL2A1", "SOX4"],
                 "ATF4": ["MCL1", "DDIT3", "EIF2AK3"],
                 "STAT5A": ["PIM1", "SOCS2", "BCL2L1"],
+                "FOXM1": ["MKI67", "TOP2A", "PCNA"],
                 "MYC": ["MKI67", "MCL1", "IL1RAP"],
             },
             perturbation_effects={
@@ -208,6 +232,7 @@ def venetoclax_resistance_multiclone() -> Scenario:
             },
             clone_truth={
                 "MCL1_resistant_clone": {
+                    "is_resistant": True,
                     "size": 0.18,
                     "markers": [
                         "MCL1",
@@ -217,6 +242,7 @@ def venetoclax_resistance_multiclone() -> Scenario:
                         "BCL2L1",
                         "DDIT3",
                     ],
+                    "decoy_markers": ["BAX", "BAK1", "BID", "CASP3"],
                     "de_genes": {
                         "MCL1": 1.8,
                         "BCL2A1": 1.6,
@@ -239,6 +265,7 @@ def venetoclax_resistance_multiclone() -> Scenario:
                     ),
                 },
                 "JAK2_STAT5_resistant_clone": {
+                    "is_resistant": True,
                     "size": 0.12,
                     "markers": [
                         "JAK2",
@@ -248,6 +275,7 @@ def venetoclax_resistance_multiclone() -> Scenario:
                         "CISH",
                         "BCL2L1",
                     ],
+                    "decoy_markers": ["JAK1", "STAT3", "IL6ST", "TYK2"],
                     "de_genes": {
                         "JAK2": 1.5,
                         "STAT5A": 1.4,
@@ -269,9 +297,33 @@ def venetoclax_resistance_multiclone() -> Scenario:
                         "resistant AML subclone in parallel"
                     ),
                 },
+                "cycling_distractor_clone": {
+                    "is_resistant": False,
+                    "size": 0.08,
+                    "markers": ["MKI67", "TOP2A", "PCNA", "UBE2C", "CDK1"],
+                    "decoy_markers": ["CDK4", "CDK6", "CCND1", "RB1"],
+                    "de_genes": {
+                        "MKI67": 1.6,
+                        "TOP2A": 1.8,
+                        "PCNA": 1.3,
+                        "UBE2C": 1.2,
+                        "CDK1": 1.1,
+                    },
+                    "pathways": {
+                        "cell_cycle": 0.96,
+                        "DNA_replication": 0.89,
+                    },
+                    "regulators": ["FOXM1", "E2F1", "MYBL2"],
+                    "mechanism": (
+                        "A transient proliferative rebound state expands after "
+                        "treatment but does not itself explain venetoclax resistance"
+                    ),
+                },
             },
             confounders={
                 "IL6_STAT3_feedback": 0.89,
+                "cell_cycle": 0.91,
+                "DNA_replication": 0.87,
                 "oxidative_stress_adaptation": 0.84,
                 "inflammatory_cytokine_response": 0.81,
             },

@@ -50,6 +50,14 @@ def _claim_dicts(action: ExperimentAction) -> List[dict]:
     return [claim for claim in raw_claims if isinstance(claim, dict)]
 
 
+def _clonal_claim_dicts(claims: List[dict]) -> List[dict]:
+    nested: List[dict] = []
+    for claim in claims:
+        raw_nested = claim.get("clonal_claims", [])
+        nested.extend(item for item in raw_nested if isinstance(item, dict))
+    return nested
+
+
 def check_causal_validity(
     action: ExperimentAction, s: FullLatentState
 ) -> List[RuleViolation]:
@@ -85,8 +93,13 @@ def check_causal_validity(
 
     if action.action_type == ActionType.SYNTHESIZE_CONCLUSION:
         claims = _claim_dicts(action)
-        has_marker_claims = any(claim.get("top_markers") for claim in claims)
-        has_mechanism_claims = any(claim.get("causal_mechanisms") for claim in claims)
+        clonal_claims = _clonal_claim_dicts(claims)
+        has_marker_claims = any(claim.get("top_markers") for claim in claims) or any(
+            claim.get("markers") for claim in clonal_claims
+        )
+        has_mechanism_claims = any(
+            claim.get("causal_mechanisms") for claim in claims
+        ) or any(claim.get("mechanism") for claim in clonal_claims)
 
         if not s.progress.de_performed and not s.progress.cells_clustered:
             vs.append(
@@ -134,6 +147,10 @@ def check_causal_validity(
             not claim.get("evidence_steps")
             for claim in claims
             if claim.get("causal_mechanisms")
+            or any(
+                isinstance(item, dict) and item.get("mechanism")
+                for item in claim.get("clonal_claims", [])
+            )
         ):
             vs.append(
                 RuleViolation(
@@ -204,10 +221,26 @@ def check_causal_validity(
                         ),
                     )
                 )
+            if len(clonal_claims) < 2:
+                vs.append(
+                    RuleViolation(
+                        rule_id="expert_conclusion_without_clonal_claims",
+                        severity=Severity.SOFT,
+                        message=(
+                            "Expert multiclone conclusions should commit to at least "
+                            "two clone-resolved claims instead of only a flat marker list"
+                        ),
+                    )
+                )
 
         unique_claim_mechs = set()
         for claim in claims:
             unique_claim_mechs.update(claim.get("causal_mechanisms", []))
+            unique_claim_mechs.update(
+                nested.get("mechanism", "")
+                for nested in claim.get("clonal_claims", [])
+                if isinstance(nested, dict) and nested.get("mechanism")
+            )
             if claim.get("claim_type") == "causal":
                 if (
                     not s.progress.markers_validated
