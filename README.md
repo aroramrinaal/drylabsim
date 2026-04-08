@@ -145,7 +145,7 @@ After startup, visit `http://localhost:8000/demo`.
 
 ## Deploying to Hugging Face Spaces
 
-This repo is structured as an OpenEnv environment and includes [`openenv.yaml`](/Users/mrinaalarora/Developer/open-source/drylabsim/openenv.yaml), so deployment is straightforward:
+This repo is structured as an OpenEnv environment and includes [`openenv.yaml`](https://github.com/aroramrinaal/drylabsim/blob/main/openenv.yaml), so deployment is straightforward:
 
 ```bash
 openenv push
@@ -195,7 +195,7 @@ DryLabSim has two scoring layers:
    The environment gives step-wise reward for validity, ordering, information gain, efficiency, novelty, and penalties.
 
 2. **Deterministic terminal grading**
-   [`server/grader/grade.py`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/grader/grade.py) combines:
+   [`server/grader/grade.py`](https://github.com/aroramrinaal/drylabsim/blob/main/server/grader/grade.py) combines:
    - pipeline completeness: `0.30`
    - biology recovery: `0.55`
    - efficiency: `0.15`
@@ -222,7 +222,7 @@ This creates a POMDP where the agent has to plan, adapt, and calibrate instead o
 
 ## Inference Entrypoint
 
-[`inference.py`](/Users/mrinaalarora/Developer/open-source/drylabsim/inference.py) is the hackathon inference entrypoint. It:
+[`inference.py`](https://github.com/aroramrinaal/drylabsim/blob/main/inference.py) is the hackathon inference entrypoint. It:
 - connects to the environment over HTTP
 - drives the environment step-by-step
 - prints machine-parseable `[START]`, `[STEP]`, and `[END]` lines
@@ -232,7 +232,58 @@ Environment variables used by the baseline include:
 - `API_BASE_URL`
 - `HF_TOKEN` or `API_KEY`
 - `MODEL_NAME`
+
+
 - `ENV_URL`
+
+
+
+## Baseline Scores
+
+
+
+Baseline scores from running `inference.py` with different models:
+
+
+
+### Qwen/Qwen2.5-7B-Instruct
+
+| task | difficulty | score |
+|---|---|---|
+| cardiac_disease_de | easy | 0.719 |
+| hematopoiesis_trajectory | medium | 0.569 |
+| perturbation_immune | hard | 0.363 |
+| venetoclax_resistance_multiclone | expert | 0.150 |
+
+
+
+### Qwen/Qwen2.5-72B-Instruct
+
+| task | difficulty | score |
+|---|---|---|
+| cardiac_disease_de | easy | 0.654 |
+| hematopoiesis_trajectory | medium | 0.487 |
+| perturbation_immune | hard | 0.478 |
+| venetoclax_resistance_multiclone | expert | 0.200 |
+
+
+
+### openai/gpt-oss-120b
+
+| task | difficulty | score |
+|---|---|---|
+| cardiac_disease_de | easy | 0.713 |
+| hematopoiesis_trajectory | medium | 0.497 |
+| perturbation_immune | hard | 0.395 |
+| venetoclax_resistance_multiclone | expert | 0.250 |
+
+
+
+These scores were obtained by averaging over single runs; multiple runs may vary due to stochasticity in the environment and model generation.
+
+
+
+
 
 ## Project Structure
 
@@ -264,11 +315,11 @@ drylabsim/
 
 ## Core Scientific Components
 
-- [`server/tasks/`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/tasks) defines the benchmark scenarios and optional domain randomization.
-- [`server/simulator/`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/simulator) holds the hidden biological state, stochastic noise model, transition logic, and output synthesis.
-- [`server/rules/engine.py`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/rules/engine.py) enforces scientific sequencing and resource validity.
-- [`server/rewards/`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/rewards) computes dense reward components.
-- [`server/grader/`](/Users/mrinaalarora/Developer/open-source/drylabsim/server/grader) scores final episodes deterministically for benchmark evaluation.
+- [`server/tasks/`](https://github.com/aroramrinaal/drylabsim/tree/main/server/tasks) defines the benchmark scenarios and optional domain randomization.
+- [`server/simulator/`](https://github.com/aroramrinaal/drylabsim/tree/main/server/simulator) holds the hidden biological state, stochastic noise model, transition logic, and output synthesis.
+- [`server/rules/engine.py`](https://github.com/aroramrinaal/drylabsim/blob/main/server/rules/engine.py) enforces scientific sequencing and resource validity.
+- [`server/rewards/`](https://github.com/aroramrinaal/drylabsim/tree/main/server/rewards) computes dense reward components.
+- [`server/grader/`](https://github.com/aroramrinaal/drylabsim/tree/main/server/grader) scores final episodes deterministically for benchmark evaluation.
 
 ## Why It Matters
 
