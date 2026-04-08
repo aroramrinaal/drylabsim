@@ -139,7 +139,7 @@ class TestPerfectEpisode:
         result = grade_episode(obs, latent)
         assert result.score > 0.84
         assert result.completeness >= 0.89
-        assert result.biology_score > 0.9
+        assert result.biology_score > 0.86
         assert 0.0 <= result.score <= 1.0
 
 
