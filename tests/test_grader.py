@@ -12,6 +12,7 @@ Covers:
 
 from models import (
     ActionType,
+    ClonalClaim,
     ConclusionClaim,
     ExperimentObservation,
     IntermediateOutput,
@@ -65,16 +66,21 @@ def _make_latent(
     true_markers=None,
     causal_mechanisms=None,
     true_pathways=None,
+    clone_truth=None,
+    confounders=None,
     budget_total=100_000,
     budget_used=0,
     time_limit=180,
     time_used=0,
+    scenario_name="",
 ):
     return FullLatentState(
         biology=LatentBiologicalState(
             true_markers=true_markers or [],
             causal_mechanisms=causal_mechanisms or [],
             true_pathways=true_pathways or {},
+            clone_truth=clone_truth or {},
+            confounders=confounders or {},
         ),
         progress=progress or ExperimentProgress(),
         resources=ResourceState(
@@ -83,6 +89,7 @@ def _make_latent(
             time_limit_days=time_limit,
             time_used_days=time_used,
         ),
+        scenario_name=scenario_name,
     )
 
 
@@ -620,3 +627,121 @@ class TestBiologyScoring:
             ],
         )
         assert clean > confounded
+
+    def test_expert_multiclone_caps_flat_claims_and_rewards_clonal_resolution(self):
+        clone_truth = {
+            "MCL1_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.18,
+                "markers": ["MCL1", "BCL2A1", "SOX4"],
+                "pathways": {"intrinsic_apoptosis_regulation": 0.95},
+                "mechanism": "An MCL1/BCL2A1 anti-apoptotic escape program",
+            },
+            "JAK2_STAT5_resistant_clone": {
+                "is_resistant": True,
+                "size": 0.12,
+                "markers": ["JAK2", "STAT5A", "PIM1"],
+                "pathways": {"JAK_STAT_signalling": 0.97},
+                "mechanism": "A JAK2-STAT5-PIM1 survival program",
+            },
+            "cycling_distractor_clone": {
+                "is_resistant": False,
+                "size": 0.08,
+                "markers": ["MKI67", "TOP2A", "PCNA"],
+                "pathways": {"cell_cycle": 0.96},
+                "mechanism": "Cycling distractor",
+            },
+        }
+        state = _make_latent(
+            progress=ExperimentProgress(markers_validated=True),
+            true_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
+            causal_mechanisms=[
+                "An MCL1/BCL2A1 anti-apoptotic escape program",
+                "A JAK2-STAT5-PIM1 survival program",
+            ],
+            true_pathways={
+                "intrinsic_apoptosis_regulation": 0.9,
+                "JAK_STAT_signalling": 0.85,
+            },
+            clone_truth=clone_truth,
+            confounders={"cell_cycle": 0.9},
+            scenario_name="venetoclax_resistance_multiclone",
+        )
+
+        flat = score_biology(
+            state,
+            discovered_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
+            candidate_mechanisms=[
+                "An MCL1/BCL2A1 anti-apoptotic escape program",
+                "A JAK2-STAT5-PIM1 survival program",
+            ],
+            conclusions=[
+                ConclusionClaim(
+                    top_markers=["MCL1", "BCL2A1", "JAK2", "STAT5A", "PIM1"],
+                    causal_mechanisms=[
+                        "An MCL1/BCL2A1 anti-apoptotic escape program",
+                        "A JAK2-STAT5-PIM1 survival program",
+                    ],
+                    predicted_pathways={
+                        "intrinsic_apoptosis_regulation": 0.9,
+                        "JAK_STAT_signalling": 0.85,
+                    },
+                )
+            ],
+        )
+        structured = score_biology(
+            state,
+            discovered_markers=[],
+            candidate_mechanisms=[],
+            conclusions=[
+                ConclusionClaim(
+                    clonal_claims=[
+                        ClonalClaim(
+                            subpopulation_id="cluster_1",
+                            markers=["MCL1", "BCL2A1", "SOX4"],
+                            mechanism="An MCL1/BCL2A1 anti-apoptotic escape program",
+                            supporting_pathways=["intrinsic_apoptosis_regulation"],
+                        ),
+                        ClonalClaim(
+                            subpopulation_id="cluster_2",
+                            markers=["JAK2", "STAT5A", "PIM1"],
+                            mechanism="A JAK2-STAT5-PIM1 survival program",
+                            supporting_pathways=["JAK_STAT_signalling"],
+                        ),
+                    ],
+                    clone_size_estimates={"cluster_1": 0.18, "cluster_2": 0.12},
+                    predicted_pathways={
+                        "intrinsic_apoptosis_regulation": 0.9,
+                        "JAK_STAT_signalling": 0.85,
+                    },
+                )
+            ],
+        )
+        contaminated = score_biology(
+            state,
+            discovered_markers=[],
+            candidate_mechanisms=[],
+            conclusions=[
+                ConclusionClaim(
+                    clonal_claims=[
+                        ClonalClaim(
+                            subpopulation_id="cluster_1",
+                            markers=["MCL1", "BCL2A1", "MKI67", "TOP2A"],
+                            mechanism="An MCL1/BCL2A1 anti-apoptotic escape program",
+                            supporting_pathways=["intrinsic_apoptosis_regulation", "cell_cycle"],
+                        ),
+                        ClonalClaim(
+                            subpopulation_id="cluster_2",
+                            markers=["JAK2", "STAT5A", "PIM1"],
+                            mechanism="A JAK2-STAT5-PIM1 survival program",
+                            supporting_pathways=["JAK_STAT_signalling"],
+                        ),
+                    ],
+                    clone_size_estimates={"cluster_1": 0.18, "cluster_2": 0.12},
+                )
+            ],
+        )
+
+        assert flat <= 0.30
+        assert structured > flat
+        assert structured > contaminated

@@ -52,7 +52,7 @@ The four scenarios are:
 | `cardiac_disease_de` | easy | heart | Differential expression between healthy and dilated cardiomyopathy cardiomyocytes | $80 K | 120 days |
 | `hematopoiesis_trajectory` | medium | bone marrow | Infer HSC → mature lineage trajectory with three branches | $100 K | 150 days |
 | `perturbation_immune` | hard | synovial fluid | JAK inhibitor effect on T-cell states in rheumatoid arthritis | $120 K | 180 days |
-| `venetoclax_resistance_multiclone` | expert | bone marrow | Resolve parallel venetoclax resistance mechanisms across AML subclones | $150 K | 210 days |
+| `venetoclax_resistance_multiclone` | expert | bone marrow | Resolve parallel venetoclax resistance mechanisms across AML subclones | $85 K | 130 days |
 
 Each scenario carries paper references with DOIs, true DE genes with log2FC values, true pathway activities, true regulatory networks, and ground-truth causal mechanisms used for terminal reward calibration.
 

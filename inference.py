@@ -168,6 +168,8 @@ SYSTEM_PROMPT = textwrap.dedent(
     - Keep method null unless you are very sure.
     - For synthesize_conclusion, include structured claims with top_markers,
       causal_mechanisms, predicted_pathways, and evidence_steps when available.
+    - For clone-structured resistance tasks, include clonal_claims and
+      clone_size_estimates when the observation supports them.
     - Output JSON only. No markdown fences. No explanation.
     """
 ).strip()
@@ -351,7 +353,10 @@ def _best_regulators(outputs: Iterable[dict]) -> List[str]:
             seen.add(reg)
             regulators.append(reg)
 
-        for clone_data in output.get("data", {}).get("clone_regulators", {}).values():
+        cluster_regulators = output.get("data", {}).get("cluster_regulators", {})
+        if not cluster_regulators:
+            cluster_regulators = output.get("data", {}).get("clone_regulators", {})
+        for clone_data in cluster_regulators.values():
             for regulator in clone_data.get("top_regulators", []):
                 reg = str(regulator).strip()
                 if not reg or reg in seen:
@@ -379,80 +384,8 @@ def _mechanism_hypotheses(task_name: str, obs: dict) -> List[str]:
     all_outputs = obs.get("all_outputs", [])
     discovered_markers = [str(m).strip() for m in obs.get("discovered_markers", [])]
     pathway_names = list(_best_pathways(all_outputs).keys())
-    regulators = _best_regulators(all_outputs)
-    evidence = pathway_names + regulators + discovered_markers
 
     hypotheses: List[str] = []
-
-    if task_name == "hard":
-        if _contains_any(
-            evidence,
-            [
-                "jak_stat",
-                "th1",
-                "th17",
-                "cytokine",
-                "stat1",
-                "stat3",
-                "ifng",
-                "il17a",
-                "rorc",
-                "tbx21",
-            ],
-        ):
-            hypotheses.append(
-                "JAK-STAT pathway inhibition reduces Th1/Th17 activation"
-            )
-        if _contains_any(
-            evidence,
-            [
-                "regulatory_t_cell",
-                "immune_state_rebalancing",
-                "foxp3",
-                "il10",
-                "il2ra",
-                "ctla4",
-            ],
-        ):
-            hypotheses.append("Compensatory Treg expansion under JAK inhibition")
-
-    if task_name == "expert":
-        if _contains_any(
-            evidence,
-            [
-                "intrinsic_apoptosis",
-                "integrated_stress",
-                "oxidative",
-                "mcl1",
-                "bcl2a1",
-                "sox4",
-                "il1rap",
-                "ddit3",
-                "creb1",
-                "atf4",
-                "xbp1",
-            ],
-        ):
-            hypotheses.append(
-                "An MCL1/BCL2A1 anti-apoptotic escape program sustains one resistant AML subclone under venetoclax pressure"
-            )
-        if _contains_any(
-            evidence,
-            [
-                "jak_stat",
-                "cytokine_receptor",
-                "stress_response",
-                "jak2",
-                "stat5a",
-                "pim1",
-                "socs2",
-                "cish",
-                "irf8",
-            ],
-        ):
-            hypotheses.append(
-                "A JAK2-STAT5-PIM1 survival program sustains a second resistant AML subclone in parallel"
-            )
 
     if not hypotheses and pathway_names:
         top_pathways = ", ".join(pathway_names[:2])
@@ -467,6 +400,98 @@ def _mechanism_hypotheses(task_name: str, obs: dict) -> List[str]:
             seen.add(mechanism)
             deduped.append(mechanism)
     return deduped[:4]
+
+
+def _latest_cluster_sizes(obs: dict) -> Dict[str, float]:
+    all_outputs = obs.get("all_outputs", [])
+    for output in reversed(all_outputs):
+        if output.get("output_type") != "cluster_result":
+            continue
+        data = output.get("data", {})
+        cluster_names = data.get("cluster_names", [])
+        cluster_sizes = data.get("cluster_sizes", [])
+        total = sum(size for size in cluster_sizes if isinstance(size, int))
+        if not cluster_names or not cluster_sizes or total <= 0:
+            return {}
+        return {
+            str(cluster): round(float(size) / float(total), 3)
+            for cluster, size in zip(cluster_names, cluster_sizes)
+        }
+    return {}
+
+
+def _cluster_markers(outputs: Iterable[dict]) -> Dict[str, List[str]]:
+    for output in reversed(list(outputs)):
+        if output.get("output_type") != "marker_result":
+            continue
+        data = output.get("data", {})
+        cluster_markers = data.get("cluster_markers")
+        if not cluster_markers:
+            cluster_markers = data.get("clone_markers", {})
+        if cluster_markers:
+            return {
+                str(cluster_id): [
+                    str(marker).strip() for marker in markers if str(marker).strip()
+                ]
+                for cluster_id, markers in cluster_markers.items()
+            }
+    return {}
+
+
+def _cluster_pathway_map(outputs: Iterable[dict]) -> Dict[str, List[str]]:
+    pathway_map: Dict[str, List[str]] = {}
+    for output in outputs:
+        if output.get("output_type") != "pathway_result":
+            continue
+        data = output.get("data", {})
+        cluster_pathways = data.get("cluster_pathways")
+        if not cluster_pathways:
+            cluster_pathways = data.get("clone_pathways", {})
+        for cluster_id, cluster_data in cluster_pathways.items():
+            top = [
+                str(item.get("pathway")).strip()
+                for item in cluster_data.get("top_pathways", [])
+                if isinstance(item, dict) and str(item.get("pathway", "")).strip()
+            ]
+            if top:
+                pathway_map[str(cluster_id)] = top
+    return pathway_map
+
+
+def _fallback_clonal_claims(obs: dict) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
+    all_outputs = obs.get("all_outputs", [])
+    cluster_markers = _cluster_markers(all_outputs)
+    cluster_pathways = _cluster_pathway_map(all_outputs)
+    cluster_sizes = _latest_cluster_sizes(obs)
+
+    cluster_ids = list(dict.fromkeys(list(cluster_markers.keys()) + list(cluster_pathways.keys())))
+    clonal_claims: List[Dict[str, Any]] = []
+    for cluster_id in cluster_ids:
+        markers = cluster_markers.get(cluster_id, [])[:4]
+        supporting_pathways = cluster_pathways.get(cluster_id, [])[:3]
+        mechanism = ""
+        if supporting_pathways:
+            mechanism = (
+                "Evidence supports pathway-level remodeling involving "
+                + ", ".join(supporting_pathways[:2])
+            )
+        if not markers and not supporting_pathways:
+            continue
+        clonal_claims.append(
+            {
+                "subpopulation_id": cluster_id,
+                "markers": markers,
+                "mechanism": mechanism,
+                "supporting_pathways": supporting_pathways,
+            }
+        )
+
+    size_estimates = {
+        cluster_id: size
+        for cluster_id, size in cluster_sizes.items()
+        if cluster_id in {claim["subpopulation_id"] for claim in clonal_claims}
+    }
+    return clonal_claims[:4], size_estimates
 
 
 def _evidence_steps(pipeline_history: List[dict]) -> List[int]:
@@ -511,6 +536,22 @@ def build_fallback_action(task_name: str, obs: dict, action_name: str) -> dict:
         mechanisms = _mechanism_hypotheses(task_name, obs)
         predicted_pathways = _best_pathways(all_outputs)
         confidence = 0.62 if task_name == "expert" else 0.68
+        clonal_claims: List[Dict[str, Any]] = []
+        clone_size_estimates: Dict[str, float] = {}
+        if task_name == "expert":
+            clonal_claims, clone_size_estimates = _fallback_clonal_claims(obs)
+            if not top_markers and clonal_claims:
+                top_markers = [
+                    marker
+                    for claim in clonal_claims
+                    for marker in claim.get("markers", [])
+                ][:6]
+            clonal_mechanisms = [
+                claim["mechanism"]
+                for claim in clonal_claims
+                if claim.get("mechanism")
+            ]
+            mechanisms = list(dict.fromkeys(clonal_mechanisms + mechanisms))[:4]
         claim_type = "causal" if mechanisms else "correlational"
 
         if not top_markers:
@@ -528,6 +569,8 @@ def build_fallback_action(task_name: str, obs: dict, action_name: str) -> dict:
             "predicted_pathways": predicted_pathways,
             "mechanism_confidence": {mechanism: confidence for mechanism in mechanisms},
             "evidence_steps": _evidence_steps(pipeline_history),
+            "clonal_claims": clonal_claims,
+            "clone_size_estimates": clone_size_estimates,
         }
         action["parameters"] = {"claims": [claim]}
 

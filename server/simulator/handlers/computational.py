@@ -41,6 +41,39 @@ def _clone_alias_map(s: FullLatentState) -> Dict[str, str]:
     }
 
 
+def _expert_cluster_labels(s: FullLatentState) -> List[str]:
+    background = [
+        p.name
+        for p in s.biology.cell_populations
+        if p.name not in set(s.biology.clone_truth.keys())
+    ]
+    internal_cluster_labels = ["AML_founder_blast", *list(s.biology.clone_truth.keys())]
+    for pop_name in background:
+        if pop_name not in internal_cluster_labels:
+            internal_cluster_labels.append(pop_name)
+
+    integrated = s.progress.batches_integrated
+    minor_clone = _minor_clone_name(s)
+    if not integrated and minor_clone in internal_cluster_labels:
+        internal_cluster_labels.remove(minor_clone)
+        internal_cluster_labels.append("merged_relapse_state")
+    return internal_cluster_labels
+
+
+def _expert_cluster_alias_map(s: FullLatentState) -> Dict[str, str]:
+    labels = _expert_cluster_labels(s)
+    alias_map = {label: f"cluster_{idx}" for idx, label in enumerate(labels)}
+    minor_clone = _minor_clone_name(s)
+    if (
+        not s.progress.batches_integrated
+        and minor_clone
+        and minor_clone not in alias_map
+        and "merged_relapse_state" in alias_map
+    ):
+        alias_map[minor_clone] = alias_map["merged_relapse_state"]
+    return alias_map
+
+
 def _minor_clone_name(s: FullLatentState) -> str | None:
     if not s.biology.clone_truth:
         return None
@@ -198,28 +231,12 @@ def cluster_cells(
     """Cluster cells handler."""
 
     if _is_multiclone_expert(s):
-        background = [
-            p.name
-            for p in s.biology.cell_populations
-            if p.name not in set(s.biology.clone_truth.keys())
-        ]
-        internal_cluster_labels = ["AML_founder_blast", *list(s.biology.clone_truth.keys())]
-        for pop_name in background:
-            if pop_name not in internal_cluster_labels:
-                internal_cluster_labels.append(pop_name)
-
-        integrated = s.progress.batches_integrated
-        minor_clone = _minor_clone_name(s)
-        if not integrated and minor_clone in internal_cluster_labels:
-            internal_cluster_labels.remove(minor_clone)
-            internal_cluster_labels.append("merged_relapse_state")
-
-        cluster_names = [
-            f"cluster_{i}" for i in range(len(internal_cluster_labels))
-        ]
-        cluster_aliases = dict(zip(internal_cluster_labels, cluster_names))
+        internal_cluster_labels = _expert_cluster_labels(s)
+        cluster_aliases = _expert_cluster_alias_map(s)
+        cluster_names = [cluster_aliases[label] for label in internal_cluster_labels]
         n_clusters = len(cluster_names)
         n_cells = s.progress.n_cells_after_filter or s.biology.n_true_cells
+        integrated = s.progress.batches_integrated
         quality = gen.noise.quality_degradation(
             0.88 if integrated else 0.64,
             [0.95 if integrated else 0.75],
@@ -294,7 +311,7 @@ def differential_expression(
         true_effects = s.biology.true_de_genes.get(comparison, {})
         integrated = s.progress.batches_integrated
         clone_truth = s.biology.clone_truth
-        clone_aliases = _clone_alias_map(s)
+        cluster_aliases = _expert_cluster_alias_map(s)
         minor_clone = _minor_clone_name(s)
         dominant_clone = _dominant_clone_name(s)
         batch_noise = sum(s.technical.batch_effects.values()) / max(
@@ -312,7 +329,7 @@ def differential_expression(
             noise_level,
         )
 
-        clone_de: Dict[str, Any] = {}
+        cluster_de: Dict[str, Any] = {}
         pooled_top: List[tuple[str, float]] = []
         for clone_name, truth in clone_truth.items():
             clone_effects = truth.get("de_genes", {})
@@ -336,15 +353,15 @@ def differential_expression(
             clone_detected = not (
                 clone_name == minor_clone and not integrated
             )
-            clone_de[clone_aliases[clone_name]] = {
-                "detected": clone_detected,
-                "top_genes": [
-                    {"gene": g, "log2FC": round(fc, 3)} for g, fc in clone_top
-                ],
-                "confidence": 0.81 if clone_name == dominant_clone else (
-                    0.66 if integrated else 0.42
-                ),
-            }
+            cluster_id = cluster_aliases[clone_name]
+            if integrated:
+                cluster_de[cluster_id] = {
+                    "detected": clone_detected,
+                    "top_genes": [
+                        {"gene": g, "log2FC": round(fc, 3)} for g, fc in clone_top
+                    ],
+                    "confidence": 0.81 if clone_name == dominant_clone else 0.66,
+                }
             if clone_detected:
                 pooled_top.extend(clone_top[:5])
 
@@ -361,6 +378,9 @@ def differential_expression(
             warnings.append(
                 "Residual batch structure may understate the smaller resistant branch"
             )
+            warnings.append(
+                "Bulk contrast shows mixed signal; consider clustering-resolved analysis before assigning mechanisms"
+            )
         return IntermediateOutput(
             output_type=OutputType.DE_RESULT,
             step_index=idx,
@@ -369,7 +389,9 @@ def differential_expression(
                 [1.0 - min(noise_level, 0.9)],
             ),
             summary=(
-                "Bulk DE remains mixed, but subgroup-resolved contrasts reveal parallel relapse programs"
+                "Bulk DE remains mixed and cannot cleanly separate parallel post-treatment programs"
+                if not integrated
+                else "Cluster-resolved DE distinguishes parallel post-treatment programs with competing resistance hypotheses"
             ),
             data={
                 "comparison": comparison,
@@ -379,11 +401,15 @@ def differential_expression(
                 ],
                 "n_significant": sum(1 for _, fc in merged.items() if abs(fc) > 0.5),
                 "bulk_signal_is_mixed": True,
-                "clone_de": clone_de,
+                **({"cluster_de": cluster_de} if integrated else {}),
             },
             uncertainty=0.24 if integrated else 0.46,
             warnings=warnings,
-            artifacts_available=["de_table", "clone_specific_de"],
+            artifacts_available=(
+                ["de_table", "cluster_specific_de"]
+                if integrated
+                else ["de_table"]
+            ),
         )
 
     comparison = action.parameters.get("comparison", "disease_vs_healthy")
