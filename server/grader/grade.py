@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 from .biology import score_biology
 from .pipeline import score_pipeline
 from .types import GradeResult
+from ..rewards.reward_components import conclusion_alignment
 
 if TYPE_CHECKING:
     from ...models import ClonalClaim, ConclusionClaim, ExperimentObservation, PipelineStepRecord
@@ -70,6 +71,29 @@ def _extract_clonal_claims(
     for conclusion in conclusions:
         clonal_claims.extend(conclusion.clonal_claims)
     return clonal_claims
+
+
+def _requires_marker_validation(obs: "ExperimentObservation") -> bool:
+    criteria = [criterion.lower() for criterion in obs.task.success_criteria]
+    return any("validat" in criterion and "marker" in criterion for criterion in criteria)
+
+
+def _has_structured_conclusion(obs: "ExperimentObservation") -> bool:
+    return any(
+        conclusion.top_markers
+        or conclusion.causal_mechanisms
+        or conclusion.predicted_pathways
+        or conclusion.clonal_claims
+        for conclusion in obs.conclusions
+    )
+
+
+def _has_marker_claims(obs: "ExperimentObservation") -> bool:
+    return any(
+        conclusion.top_markers
+        or any(clonal_claim.markers for clonal_claim in conclusion.clonal_claims)
+        for conclusion in obs.conclusions
+    )
 
 
 def _normalized_markers(markers: List[str]) -> set[str]:
@@ -235,6 +259,58 @@ def _apply_expert_terminal_caps(
     }
 
 
+def _apply_general_terminal_caps(
+    score: float,
+    obs: "ExperimentObservation",
+    latent: "FullLatentState",
+) -> Tuple[float, Dict[str, Any]]:
+    if not latent.progress.conclusion_reached:
+        return score, {}
+
+    action_counts = _successful_action_counts(obs.pipeline_history)
+    validation_count = max(
+        action_counts.get("validate_marker", 0),
+        1 if latent.progress.markers_validated else 0,
+    )
+    structured_conclusion = _has_structured_conclusion(obs)
+    marker_claims = _has_marker_claims(obs)
+    requires_validation = _requires_marker_validation(obs)
+    align = conclusion_alignment(latent, obs.conclusions)
+
+    cap = 1.0
+    applied_caps: Dict[str, float] = {}
+
+    if not obs.conclusions:
+        cap = min(cap, 0.42)
+        applied_caps["missing_conclusion_cap"] = 0.42
+    elif not structured_conclusion:
+        cap = min(cap, 0.48)
+        applied_caps["unstructured_conclusion_cap"] = 0.48
+    elif align < 0.25:
+        cap = min(cap, 0.50)
+        applied_caps["misaligned_conclusion_cap"] = 0.50
+    elif align < 0.45:
+        cap = min(cap, 0.60)
+        applied_caps["weak_conclusion_cap"] = 0.60
+
+    if requires_validation and validation_count < 1:
+        cap = min(cap, 0.38)
+        applied_caps["required_validation_cap"] = 0.38
+    elif marker_claims and validation_count < 1:
+        cap = min(cap, 0.52)
+        applied_caps["marker_claim_without_validation_cap"] = 0.52
+
+    adjusted = max(0.0, min(1.0, min(score, cap)))
+    return adjusted, {
+        "general_cap": cap,
+        "conclusion_alignment": align,
+        "structured_conclusion": float(structured_conclusion),
+        "marker_validation_count": validation_count,
+        "requires_marker_validation": float(requires_validation),
+        "general_applied_caps": applied_caps,
+    }
+
+
 def grade_episode(
     obs: "ExperimentObservation",
     latent: "FullLatentState",
@@ -265,6 +341,7 @@ def grade_episode(
     score = (
         _W_PIPELINE * completeness + _W_BIOLOGY * biology + _W_EFFICIENCY * efficiency
     )
+    score, general_breakdown = _apply_general_terminal_caps(score, obs, latent)
     score, expert_breakdown = _apply_expert_terminal_caps(score, obs, latent)
 
     return GradeResult(
@@ -279,6 +356,7 @@ def grade_episode(
             "weight_pipeline": _W_PIPELINE,
             "weight_biology": _W_BIOLOGY,
             "weight_efficiency": _W_EFFICIENCY,
+            **general_breakdown,
             **expert_breakdown,
         },
     )

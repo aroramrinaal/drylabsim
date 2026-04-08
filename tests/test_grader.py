@@ -36,14 +36,16 @@ def _make_obs(
     discovered_markers=None,
     candidate_mechanisms=None,
     conclusions=None,
+    pipeline_history=None,
+    task=None,
     step_index=0,
     done=True,
     reward=0.0,
 ):
     return ExperimentObservation(
-        task=TaskSpec(),
+        task=task or TaskSpec(),
         step_index=step_index,
-        pipeline_history=[],
+        pipeline_history=pipeline_history or [],
         available_assays=[],
         available_tools=[],
         resource_usage=ResourceUsage(),
@@ -201,6 +203,130 @@ class TestPartialEpisode:
         assert result.biology_score > 0.0
         assert result.biology_score < 1.0
         assert 0.0 <= result.score <= 1.0
+
+
+class TestConclusionCaps:
+    def test_missing_conclusion_cannot_score_as_good_easy_run(self):
+        progress = ExperimentProgress(
+            samples_collected=True,
+            cells_sequenced=True,
+            qc_performed=True,
+            data_filtered=True,
+            data_normalized=True,
+            de_performed=True,
+            pathways_analyzed=True,
+            markers_discovered=True,
+            conclusion_reached=True,
+        )
+        latent = _make_latent(
+            progress=progress,
+            true_markers=["NPPA", "NPPB", "POSTN"],
+            causal_mechanisms=["TGF-beta-driven fibrosis"],
+            true_pathways={"extracellular_matrix_organisation": 0.8},
+            budget_total=80_000,
+            budget_used=30_000,
+            time_limit=120,
+            time_used=18,
+        )
+        obs = _make_obs(
+            discovered_markers=["NPPA", "NPPB", "POSTN"],
+            task=TaskSpec(
+                success_criteria=[
+                    "Identify DE genes between conditions",
+                    "Validate at least one candidate marker",
+                ]
+            ),
+            pipeline_history=[
+                PipelineStepRecord(
+                    step_index=1,
+                    action_type=ActionType.COLLECT_SAMPLE,
+                    output_type=OutputType.SAMPLE_COLLECTION_RESULT,
+                ),
+                PipelineStepRecord(
+                    step_index=2,
+                    action_type=ActionType.SEQUENCE_CELLS,
+                    output_type=OutputType.SEQUENCING_RESULT,
+                ),
+                PipelineStepRecord(
+                    step_index=3,
+                    action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+                    output_type=OutputType.DE_RESULT,
+                ),
+                PipelineStepRecord(
+                    step_index=4,
+                    action_type=ActionType.MARKER_SELECTION,
+                    output_type=OutputType.MARKER_RESULT,
+                ),
+                PipelineStepRecord(
+                    step_index=5,
+                    action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                    output_type=OutputType.CONCLUSION,
+                ),
+            ],
+        )
+
+        result = grade_episode(obs, latent)
+
+        assert result.score <= 0.38
+        assert result.breakdown["general_cap"] <= 0.38
+
+    def test_validated_but_misaligned_conclusion_is_capped(self):
+        progress = ExperimentProgress(
+            samples_collected=True,
+            cells_sequenced=True,
+            qc_performed=True,
+            data_filtered=True,
+            data_normalized=True,
+            de_performed=True,
+            pathways_analyzed=True,
+            markers_discovered=True,
+            markers_validated=True,
+            conclusion_reached=True,
+        )
+        latent = _make_latent(
+            progress=progress,
+            true_markers=["NPPA", "NPPB", "POSTN"],
+            causal_mechanisms=["TGF-beta-driven fibrosis"],
+            true_pathways={"extracellular_matrix_organisation": 0.8},
+            budget_total=80_000,
+            budget_used=32_000,
+            time_limit=120,
+            time_used=20,
+        )
+        obs = _make_obs(
+            discovered_markers=["NPPA", "NPPB", "POSTN"],
+            conclusions=[
+                ConclusionClaim(
+                    top_markers=["WRONG1", "WRONG2"],
+                    causal_mechanisms=["unrelated process"],
+                    confidence=0.7,
+                ),
+            ],
+            task=TaskSpec(
+                success_criteria=[
+                    "Identify DE genes between conditions",
+                    "Validate at least one candidate marker",
+                ]
+            ),
+            pipeline_history=[
+                PipelineStepRecord(
+                    step_index=1,
+                    action_type=ActionType.VALIDATE_MARKER,
+                    output_type=OutputType.VALIDATION_RESULT,
+                    parameters={"marker": "NPPA"},
+                ),
+                PipelineStepRecord(
+                    step_index=2,
+                    action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                    output_type=OutputType.CONCLUSION,
+                ),
+            ],
+        )
+
+        result = grade_episode(obs, latent)
+
+        assert result.breakdown["conclusion_alignment"] < 0.25
+        assert result.score <= 0.50
 
 
 class TestWrongVsPartial:
