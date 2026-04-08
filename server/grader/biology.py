@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, List
 
 try:
-    from ...biology.gene_index import (
+    from ..biology.gene_index import (
         marker_set_score,
         mechanism_set_score,
         score_pathways,
@@ -24,7 +24,7 @@ except ImportError:
 
 try:
     from ...models import ConclusionClaim
-    from ...simulator.latent_state import FullLatentState
+    from ..simulator.latent_state import FullLatentState
 except ImportError:
     from models import ConclusionClaim
     from server.simulator.latent_state import FullLatentState

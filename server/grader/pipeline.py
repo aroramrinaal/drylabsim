@@ -7,7 +7,7 @@ Returns a float in [0.0, 1.0].
 from __future__ import annotations
 
 try:
-    from ...simulator.latent_state import FullLatentState
+    from ..simulator.latent_state import FullLatentState
 except ImportError:
     from server.simulator.latent_state import FullLatentState
 
