@@ -89,14 +89,7 @@
           Step Reward
           <span id="stepRewardLabel" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);">--</span>
         </div>
-        <div id="rewardBars">
-          <div class="reward-row"><span class="rw-label"><span class="rw-dot validity"></span>Validity</span><div class="rw-track"><div class="rw-fill validity" id="rw-validity"></div></div></div>
-          <div class="reward-row"><span class="rw-label"><span class="rw-dot ordering"></span>Ordering</span><div class="rw-track"><div class="rw-fill ordering" id="rw-ordering"></div></div></div>
-          <div class="reward-row"><span class="rw-label"><span class="rw-dot info_gain"></span>Info Gain</span><div class="rw-track"><div class="rw-fill info_gain" id="rw-info_gain"></div></div></div>
-          <div class="reward-row"><span class="rw-label"><span class="rw-dot efficiency"></span>Efficiency</span><div class="rw-track"><div class="rw-fill efficiency" id="rw-efficiency"></div></div></div>
-          <div class="reward-row"><span class="rw-label"><span class="rw-dot novelty"></span>Novelty</span><div class="rw-track"><div class="rw-fill novelty" id="rw-novelty"></div></div></div>
-          <div class="reward-row"><span class="rw-label"><span class="rw-dot penalty"></span>Penalty</span><div class="rw-track"><div class="rw-fill penalty" id="rw-penalty"></div></div></div>
-        </div>
+        <canvas id="radarCanvas" style="display:block;width:100%;height:195px;"></canvas>
         <div class="cumulative-row">
           <span class="cum-label">Cumulative Reward</span>
           <span class="cum-value" id="cumReward">0.00</span>
@@ -207,80 +200,82 @@ function resizeLab() {
 resizeLab();
 window.addEventListener('resize', () => { resizeLab(); });
 
-// Agent state
-let agent = { x: 0, y: 0, targetX: 0, targetY: 0, station: 'idle', working: false };
-let agentTrail = [];
-let workingTick = 0;
-let terminalLines = []; // fake terminal on computer screen
-let activeStationKey = null;
-let particlesLab = [];
+// =====================================================
+// VIRTUAL LAB — UMAP CELL SCATTER VISUALIZATION
+// =====================================================
 
-function stationPos(key) {
-  const s = STATIONS[key];
-  return { x: s.fx * labW, y: s.fy * labH };
+// Seeded RNG for reproducible layout
+function seededRng(seed) {
+  let s = seed >>> 0;
+  return () => { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return (s >>> 0) / 4294967295; };
 }
 
-function initAgent() {
-  const p = stationPos('idle');
-  agent.x = p.x; agent.y = p.y;
-  agent.targetX = p.x; agent.targetY = p.y;
-  agent.station = 'idle';
-  agent.working = false;
-  agent.facing = 1;
-  agentTrail = [];
-  terminalLines = [];
-  activeStationKey = null;
-  particlesLab = [];
-}
-initAgent();
+// Cluster definitions matching episode-data biology
+const UMAP_CLUSTERS = [
+  { id: 'founder', label: 'Founder Blasts',     cx: 0.50, cy: 0.46, n: 155, color: '#38bdf8' },
+  { id: 'gmp',     label: 'GMP-like',            cx: 0.28, cy: 0.64, n:  98, color: '#a78bfa' },
+  { id: 'mono',    label: 'Monocyte-like',       cx: 0.71, cy: 0.65, n:  85, color: '#6366f1' },
+  { id: 'tcell',   label: 'T cells',             cx: 0.12, cy: 0.38, n:  63, color: '#34d399' },
+  { id: 'blastA',  label: 'Relapse A (MCL1hi)',  cx: 0.36, cy: 0.23, n:  78, color: '#f97316' },
+  { id: 'blastB',  label: 'Relapse B (STAT5hi)', cx: 0.65, cy: 0.21, n:  45, color: '#ec4899' },
+  { id: 'nk',      label: 'NK / pDC',            cx: 0.86, cy: 0.40, n:  56, color: '#fbbf24' },
+];
 
-function moveAgentTo(stationKey) {
-  const p = stationPos(stationKey);
-  agent.targetX = p.x;
-  agent.targetY = p.y;
-  agent.station = stationKey;
-  agent.working = false;
-  activeStationKey = stationKey;
-}
-
-function setAgentWorking(actionName) {
-  agent.working = true;
-  workingTick = 0;
-  // If at computer, set up terminal lines
-  if (agent.station === 'computer') {
-    terminalLines = [];
-    typeComputerLines(actionName);
+// Generate cell positions (deterministic)
+const UMAP_CELLS = (() => {
+  const rng = seededRng(0xDEADBEEF);
+  const cells = [];
+  for (const cl of UMAP_CLUSTERS) {
+    for (let i = 0; i < cl.n; i++) {
+      const a = rng() * Math.PI * 2;
+      const d = Math.sqrt(-2 * Math.log(rng() + 1e-10)) * (0.06 + rng() * 0.022);
+      cells.push({
+        cluster: cl.id, color: cl.color,
+        bx: Math.max(0.03, Math.min(0.97, cl.cx + Math.cos(a) * d)),
+        by: Math.max(0.03, Math.min(0.97, cl.cy + Math.sin(a) * d)),
+        ix: 0.04 + rng() * 0.92,
+        iy: 0.04 + rng() * 0.92,
+        r: 1.5 + rng() * 1.3,
+        delay: rng(),
+      });
+    }
   }
-}
+  return cells;
+})();
 
-async function typeComputerLines(actionName) {
-  const lines = COMP_COMMANDS[actionName] || COMP_COMMANDS.fallback;
-  for (let i = 0; i < lines.length; i++) {
-    await wait(250);
-    terminalLines.push(lines[i]);
-    if (terminalLines.length > 5) terminalLines.shift();
-  }
-}
-
-// Particles burst
-function spawnParticles(x, y, color, count = 8) {
-  for (let i = 0; i < count; i++) {
-    const angle = (Math.PI * 2 / count) * i + Math.random() * 0.5;
-    particlesLab.push({
-      x, y,
-      vx: Math.cos(angle) * (1.5 + Math.random() * 2),
-      vy: Math.sin(angle) * (1.5 + Math.random() * 2),
-      life: 1,
-      color,
-      size: 2 + Math.random() * 2,
-    });
-  }
-}
-
-// ---- Draw loop ----
+// UMAP state
+let umapCurrentStep = -1;
+let umapVisible = false;
+let umapClustered = false;
+let umapTraj = false;
+let umapAnnotate = false;
+let umapRevealTime = 0;
+let umapClusterTime = 0;
+let umapTrajTime = 0;
+let umapAnnotTime = 0;
 let frameCount = 0;
 
-// ---- Utility: hex color → {r,g,b} ----
+function initUMAP() {
+  umapCurrentStep = -1;
+  umapVisible = false;
+  umapClustered = false;
+  umapTraj = false;
+  umapAnnotate = false;
+  umapRevealTime = 0;
+  umapClusterTime = 0;
+  umapTrajTime = 0;
+  umapAnnotTime = 0;
+}
+
+function advanceUMAPPhase(stepIdx) {
+  umapCurrentStep = stepIdx;
+  const now = performance.now();
+  if (!umapVisible) { umapVisible = true; umapRevealTime = now; }
+  if (stepIdx >= 8  && !umapClustered) { umapClustered = true; umapClusterTime = now; }
+  if (stepIdx >= 12 && !umapTraj)      { umapTraj = true;      umapTrajTime    = now; }
+  if (stepIdx >= 13 && !umapAnnotate)  { umapAnnotate = true;  umapAnnotTime   = now; }
+}
+
 function hexToRgb(hex) {
   return {
     r: parseInt(hex.slice(1,3), 16),
@@ -289,924 +284,215 @@ function hexToRgb(hex) {
   };
 }
 
-function drawLab() {
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2; }
+
+function drawUMAP() {
   frameCount++;
+  const t = frameCount;
   ctx.clearRect(0, 0, labW, labH);
-  ctx.fillStyle = FLOOR_COLOR;
+  ctx.fillStyle = '#000000';
   ctx.fillRect(0, 0, labW, labH);
 
-  // Floor — hex grid
-  const hexR = 22;
-  const hW = hexR * 2, hH = Math.sqrt(3) * hexR;
-  for (let col = -1; col < labW / (hW * 0.75) + 2; col++) {
-    for (let row = -1; row < labH / hH + 2; row++) {
-      const hx = col * hW * 0.75;
-      const hy = row * hH + (col % 2 === 0 ? 0 : hH * 0.5);
-      // Vary opacity slightly per cell for depth
-      const cellPhase = Math.sin(col * 1.7 + row * 2.3) * 0.01;
-      ctx.strokeStyle = `rgba(56,189,248,${(0.028 + cellPhase).toFixed(3)})`;
-      ctx.lineWidth = 0.5;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const angle = (i * Math.PI) / 3;
-        const px = hx + hexR * Math.cos(angle), py = hy + hexR * Math.sin(angle);
-        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-      }
-      ctx.closePath(); ctx.stroke();
+  const mL = 32, mR = 32, mT = 28, mB = 28;
+  const pW = labW - mL - mR, pH = labH - mT - mB;
+  const toSX = nx => mL + Math.max(0, Math.min(1, nx)) * pW;
+  const toSY = ny => mT + Math.max(0, Math.min(1, ny)) * pH;
+
+  // Dot-grid background
+  for (let gx = mL; gx <= labW - mR; gx += 38) {
+    for (let gy = mT; gy <= labH - mB; gy += 38) {
+      ctx.fillStyle = 'rgba(56,189,248,0.04)';
+      ctx.beginPath(); ctx.arc(gx, gy, 0.9, 0, Math.PI*2); ctx.fill();
     }
   }
 
-  // Bottom wall strip
-  ctx.fillStyle = WALL_COLOR;
-  ctx.fillRect(0, labH - 8, labW, 8);
+  // Axis labels
+  ctx.fillStyle = 'rgba(71,85,105,0.55)';
+  ctx.font = '500 8.5px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('UMAP 1', labW / 2, labH - 8);
+  ctx.save(); ctx.translate(11, labH / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('UMAP 2', 0, 0); ctx.restore();
 
-  // Active station floor glow
-  if (activeStationKey) {
-    const ap = stationPos(activeStationKey);
-    const {r,g,b} = hexToRgb(STATIONS[activeStationKey].color);
-    const pulse = 0.11 + 0.04 * Math.sin(frameCount * 0.05);
-    const grd = ctx.createRadialGradient(ap.x, ap.y, 0, ap.x, ap.y, 72);
-    grd.addColorStop(0, `rgba(${r},${g},${b},${pulse.toFixed(2)})`);
-    grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
-    ctx.fillStyle = grd;
-    ctx.fillRect(ap.x - 72, ap.y - 72, 144, 144);
-  }
-
-  // Draw equipment at each station
-  for (const [key, s] of Object.entries(STATIONS)) {
-    const pos = stationPos(key);
-    drawEquipment(key, pos.x, pos.y, s.color, key === activeStationKey);
-  }
-
-  // Animated walking paths (traveling dashes)
-  ctx.save();
-  ctx.strokeStyle = 'rgba(56,189,248,0.07)';
-  ctx.lineWidth = 14;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.setLineDash([6, 20]);
-  ctx.lineDashOffset = -(frameCount * 0.3) % 26;
-  ctx.beginPath();
-  const p0 = stationPos(PRIMARY_WALK_PATH[0]);
-  ctx.moveTo(p0.x, p0.y + 10);
-  for (let i = 1; i < PRIMARY_WALK_PATH.length; i++) {
-    const pp = stationPos(PRIMARY_WALK_PATH[i]);
-    ctx.lineTo(pp.x, pp.y + 10);
-  }
-  ctx.stroke();
-  ctx.beginPath();
-  const pl0 = stationPos(SECONDARY_WALK_PATH[0]);
-  ctx.moveTo(pl0.x, pl0.y + 10);
-  for (let i = 1; i < SECONDARY_WALK_PATH.length; i++) {
-    const pp = stationPos(SECONDARY_WALK_PATH[i]);
-    ctx.lineTo(pp.x, pp.y + 10);
-  }
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.restore();
-
-  // Floating terminal popup at computer
-  if (agent.station === 'computer' && agent.working && terminalLines.length > 0) {
-    const cp = stationPos('computer');
-    const sw = 150, sh = 90;
-    const sx = cp.x - sw - 20, sy = cp.y - sh / 2;
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    roundRect(ctx, sx + 3, sy + 3, sw, sh, 6); ctx.fill();
-    ctx.fillStyle = 'rgba(7,9,13,0.97)';
-    ctx.strokeStyle = 'rgba(56,189,248,0.3)';
-    ctx.lineWidth = 1;
-    roundRect(ctx, sx, sy, sw, sh, 6); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = 'rgba(30,41,59,0.5)';
-    ctx.fillRect(sx + 1, sy + 1, sw - 2, 14);
-    ctx.fillStyle = '#475569';
-    ctx.font = '500 7px Inter, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('terminal', sx + 6, sy + 10);
-    ctx.fillStyle = '#f87171'; ctx.beginPath(); ctx.arc(sx + sw - 28, sy + 7, 3, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(sx + sw - 18, sy + 7, 3, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#34d399'; ctx.beginPath(); ctx.arc(sx + sw -  8, sy + 7, 3, 0, Math.PI*2); ctx.fill();
-    ctx.font = '500 9px JetBrains Mono, monospace';
-    const startY = sy + 28;
-    for (let i = 0; i < terminalLines.length; i++) {
-      const line = terminalLines[i];
-      ctx.fillStyle = line.startsWith('$') ? '#34d399' : (line.includes('***') || line.includes('OK')) ? '#34d399' : '#94a3b8';
-      ctx.fillText(terminalLines[i].substring(0, 24), sx + 8, startY + i * 14);
-    }
-    if (frameCount % 60 < 30) {
-      ctx.fillStyle = '#34d399';
-      ctx.fillRect(sx + 8, startY + terminalLines.length * 14 - 8, 6, 11);
-    }
-  }
-
-  // Whiteboard popup
-  if (agent.station === 'whiteboard' && agent.working) {
-    const wp = stationPos('whiteboard');
-    const bw = 120, bh = 72;
-    const bx = wp.x - bw / 2, by = wp.y - bh - 45;
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    roundRect(ctx, bx + 3, by + 3, bw, bh, 6); ctx.fill();
-    ctx.fillStyle = 'rgba(17,24,39,0.95)';
-    ctx.strokeStyle = 'rgba(167,139,250,0.3)';
-    ctx.lineWidth = 1;
-    roundRect(ctx, bx, by, bw, bh, 6); ctx.fill(); ctx.stroke();
-    ctx.font = '600 8px JetBrains Mono, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#a78bfa';
-    ctx.fillText('CONCLUSION', bx + 8, by + 14);
-    ctx.font = '400 7.5px JetBrains Mono, monospace';
-    for (let i = 0; i < SYNTH_LINES.length; i++) {
-      ctx.fillStyle = i === 0 ? '#34d399' : '#94a3b8';
-      ctx.fillText(SYNTH_LINES[i], bx + 8, by + 28 + i * 12);
-    }
-  }
-
-  // Activity text above active station
-  if (agent.working && activeStationKey && activeStationKey !== 'idle') {
-    const sp = stationPos(activeStationKey);
-    ctx.fillStyle = STATIONS[activeStationKey].color;
-    ctx.font = '500 9px JetBrains Mono, monospace';
+  // Pre-run idle state
+  if (!umapVisible) {
+    ctx.fillStyle = 'rgba(56,189,248,0.15)';
+    ctx.font = '500 10px JetBrains Mono, monospace';
     ctx.textAlign = 'center';
-    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(frameCount * 0.06);
-    const yOff = ['sample','prep'].includes(activeStationKey) ? -60 : -55;
-    ctx.fillText(ACTIVITY_TEXT[activeStationKey] || 'working...', sp.x, sp.y + yOff);
-    ctx.globalAlpha = 1;
+    ctx.fillText('13,912 cells · awaiting analysis', labW/2, labH/2 - 6);
+    ctx.fillStyle = 'rgba(56,189,248,0.07)';
+    ctx.font = '400 8.5px JetBrains Mono, monospace';
+    ctx.fillText('run episode to visualize', labW/2, labH/2 + 10);
+    requestAnimationFrame(drawUMAP);
+    return;
   }
 
-  // Move agent smoothly
-  const dx = agent.targetX - agent.x;
-  const dy = agent.targetY - agent.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  const isWalking = dist > 2;
-  if (isWalking) {
-    agent.x += dx * 0.05;
-    agent.y += dy * 0.05;
-    agent.facing = dx > 0 ? 1 : dx < -0.5 ? -1 : agent.facing;
-  }
+  const now = performance.now();
+  const revealT = umapVisible ? Math.min(1, (now - umapRevealTime) / 3200) : 0;
+  const clusterT = umapClustered ? easeInOut(Math.min(1, (now - umapClusterTime) / 1800)) : 0;
 
-  drawAgent(agent.x, agent.y, isWalking, agent.working);
-
-  // Particles
-  for (let i = particlesLab.length - 1; i >= 0; i--) {
-    const p = particlesLab[i];
-    p.x += p.vx; p.y += p.vy;
-    p.vx *= 0.95; p.vy *= 0.95;
-    p.life -= 0.018;
-    if (p.life <= 0) { particlesLab.splice(i, 1); continue; }
-    ctx.globalAlpha = p.life * 0.7;
-    ctx.fillStyle = p.color;
+  // Draw cells
+  for (const cell of UMAP_CELLS) {
+    if (cell.delay > revealT) continue;
+    const nx = cell.ix + (cell.bx - cell.ix) * clusterT;
+    const ny = cell.iy + (cell.by - cell.iy) * clusterT;
+    const sx = toSX(nx), sy = toSY(ny);
+    const colored = umapClustered && clusterT > 0.25;
+    const pulse = 0.6 + Math.sin(t * 0.018 + cell.delay * 8) * 0.08;
+    if (colored) {
+      const {r,g,b} = hexToRgb(cell.color);
+      ctx.fillStyle = `rgba(${r},${g},${b},${(pulse * 0.72).toFixed(2)})`;
+    } else {
+      ctx.fillStyle = `rgba(71,85,105,${(0.28 + cell.delay * 0.12).toFixed(2)})`;
+    }
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.arc(sx, sy, cell.r * (colored ? 1 : 0.85), 0, Math.PI*2);
     ctx.fill();
   }
-  ctx.globalAlpha = 1;
 
-  // Station labels
-  for (const [key, s] of Object.entries(STATIONS)) {
-    if (key === 'idle') continue;
-    const pos = stationPos(key);
-    const isActive = key === activeStationKey;
-    ctx.fillStyle = isActive ? s.color : '#334155';
-    ctx.font = `600 ${isActive ? 9 : 8}px Inter, sans-serif`;
-    ctx.textAlign = 'center';
-    const ly = key === 'cohort' || key === 'sequencer' ? pos.y + 48 : pos.y + 45;
-    ctx.fillText(s.label, pos.x, ly);
+  // Trajectory arcs
+  if (umapTraj) {
+    const trajT = easeInOut(Math.min(1, (now - umapTrajTime) / 1400));
+    const fX = toSX(UMAP_CLUSTERS[0].cx), fY = toSY(UMAP_CLUSTERS[0].cy);
+    const aX = toSX(UMAP_CLUSTERS[4].cx), aY = toSY(UMAP_CLUSTERS[4].cy);
+    const bX = toSX(UMAP_CLUSTERS[5].cx), bY = toSY(UMAP_CLUSTERS[5].cy);
+
+    ctx.save();
+    ctx.setLineDash([5, 7]);
+    ctx.lineDashOffset = -(t * 0.45) % 12;
+
+    ctx.strokeStyle = 'rgba(249,115,22,0.55)'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(fX, fY);
+    ctx.quadraticCurveTo(fX - 22, (fY+aY)/2, fX+(aX-fX)*trajT, fY+(aY-fY)*trajT);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(236,72,153,0.55)'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(fX, fY);
+    ctx.quadraticCurveTo(fX + 18, (fY+bY)/2, fX+(bX-fX)*trajT, fY+(bY-fY)*trajT);
+    ctx.stroke();
+
+    ctx.setLineDash([]); ctx.restore();
   }
 
-  requestAnimationFrame(drawLab);
-}
-
-// ---- Draw agent: glowing sample tube ----
-function drawAgent(x, y, moving, working) {
-  const t = frameCount;
-  const bob = moving ? Math.sin(t * 0.18) * 2.5 : (working ? Math.sin(t * 0.06) * 1 : 0);
-  const sc = activeStationKey && STATIONS[activeStationKey] ? STATIONS[activeStationKey].color : '#38bdf8';
-  const {r, g, b} = hexToRgb(sc);
-  const glowAmt = working ? 0.55 + 0.22 * Math.sin(t * 0.1) : (moving ? 0.28 : 0.22);
-
-  ctx.save();
-  ctx.translate(x, y - 10 + bob);
-
-  // Ground shadow (ellipse)
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
-  ctx.beginPath(); ctx.ellipse(0, 20, 10, 3, 0, 0, Math.PI * 2); ctx.fill();
-
-  // Ambient glow halo
-  const halo = ctx.createRadialGradient(0, 0, 1, 0, 0, 24);
-  halo.addColorStop(0, `rgba(${r},${g},${b},${(glowAmt * 0.45).toFixed(3)})`);
-  halo.addColorStop(1, `rgba(${r},${g},${b},0)`);
-  ctx.fillStyle = halo;
-  ctx.fillRect(-24, -26, 48, 50);
-
-  // Outer tube body (rounded bottom)
-  ctx.beginPath();
-  ctx.moveTo(-6, -20); ctx.lineTo(-6, 14);
-  ctx.quadraticCurveTo(-6, 20, 0, 20);
-  ctx.quadraticCurveTo( 6, 20, 6, 14);
-  ctx.lineTo(6, -20);
-  ctx.closePath();
-  ctx.fillStyle = '#141e30';
-  ctx.fill();
-  ctx.strokeStyle = `rgba(${r},${g},${b},0.45)`;
-  ctx.lineWidth = 0.9;
-  ctx.stroke();
-
-  // Liquid fill (clipped to tube interior)
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(-5, -19); ctx.lineTo(-5, 14);
-  ctx.quadraticCurveTo(-5, 19, 0, 19);
-  ctx.quadraticCurveTo( 5, 19, 5, 14);
-  ctx.lineTo(5, -19);
-  ctx.closePath();
-  ctx.clip();
-
-  const liquidTop = working ? 0 + Math.sin(t * 0.12) * 1.5 : 3;
-  const liqGrd = ctx.createLinearGradient(0, liquidTop, 0, 19);
-  liqGrd.addColorStop(0, `rgba(${r},${g},${b},0.88)`);
-  liqGrd.addColorStop(1, `rgba(${r},${g},${b},0.38)`);
-  ctx.fillStyle = liqGrd;
-  ctx.fillRect(-5, liquidTop, 10, 24);
-
-  // Bubbles while working
-  if (working) {
-    for (let bi = 0; bi < 3; bi++) {
-      const bx2 = (bi % 2 === 0 ? -1.5 : 1.5);
-      const by2 = liquidTop + 14 - ((t * 0.55 + bi * 7) % 15);
-      ctx.fillStyle = `rgba(255,255,255,0.35)`;
-      ctx.beginPath(); ctx.arc(bx2, by2, 1.1, 0, Math.PI * 2); ctx.fill();
-    }
-  }
-  ctx.restore();
-
-  // Meniscus (liquid surface)
-  ctx.fillStyle = `rgba(${r},${g},${b},0.95)`;
-  ctx.beginPath(); ctx.ellipse(0, working ? Math.sin(t*0.12)*1.5 : 3, 5, 1.8, 0, 0, Math.PI * 2); ctx.fill();
-
-  // Tube top rim
-  ctx.fillStyle = '#1e2d42';
-  ctx.beginPath(); ctx.ellipse(0, -20, 6.5, 2.2, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#334155'; ctx.lineWidth = 0.5; ctx.stroke();
-
-  // Colored cap / stopper
-  ctx.fillStyle = sc;
-  ctx.globalAlpha = working ? 0.85 + 0.15 * Math.sin(t * 0.12) : 0.7;
-  ctx.beginPath();
-  ctx.moveTo(-4.5, -20);
-  ctx.quadraticCurveTo(-5,   -27, 0, -27);
-  ctx.quadraticCurveTo( 5,   -27, 4.5, -20);
-  ctx.closePath();
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  // Label band (white stripe mid-tube)
-  ctx.fillStyle = 'rgba(255,255,255,0.1)';
-  ctx.fillRect(-5, -8, 10, 3.5);
-
-  // Glass shine (left edge highlight)
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.beginPath();
-  ctx.moveTo(-5, -18); ctx.lineTo(-4, -18); ctx.lineTo(-4, 16); ctx.lineTo(-5, 14); ctx.closePath();
-  ctx.fill();
-
-  ctx.restore();
-}
-
-// ---- Draw lab equipment (enhanced) ----
-function drawEquipment(stationKey, cx, cy, color, active) {
-  ctx.save();
-  const t = frameCount;
-
-  switch (stationKey) {
-
-    case 'idle': {
-      // ── ENTRANCE DOOR ──
-      // Wall panels flanking door
-      ctx.fillStyle = '#0c1520';
-      ctx.fillRect(cx - 34, cy - 42, 20, 56);
-      ctx.fillRect(cx + 14, cy - 42, 20, 56);
-      // Baseboard
-      ctx.fillStyle = '#131d2c';
-      ctx.fillRect(cx - 34, cy + 12, 68, 5);
-
-      // Door frame (metal surround)
-      ctx.fillStyle = '#1a2840';
-      ctx.fillRect(cx - 14, cy - 42, 28, 56);
-      ctx.strokeStyle = active ? 'rgba(71,85,105,0.6)' : 'rgba(37,48,64,0.7)';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(cx - 14, cy - 42, 28, 56);
-
-      // Door panel
-      ctx.fillStyle = '#101825';
-      ctx.fillRect(cx - 12, cy - 40, 24, 52);
-
-      // Door window (upper)
-      ctx.fillStyle = active ? 'rgba(56,189,248,0.07)' : '#09121e';
-      ctx.fillRect(cx - 7, cy - 36, 14, 13);
-      ctx.strokeStyle = '#1e2d3d'; ctx.lineWidth = 0.6;
-      ctx.strokeRect(cx - 7, cy - 36, 14, 13);
-      // Window panes
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - 36); ctx.lineTo(cx, cy - 23);
-      ctx.moveTo(cx - 7, cy - 30); ctx.lineTo(cx + 7, cy - 30);
-      ctx.stroke();
-
-      // Door lower panels (decorative)
-      ctx.strokeStyle = '#1a2838'; ctx.lineWidth = 0.5;
-      ctx.strokeRect(cx - 9, cy - 18, 18, 10);
-      ctx.strokeRect(cx - 9, cy - 5,  18, 12);
-
-      // Door handle
-      ctx.strokeStyle = '#475569'; ctx.lineWidth = 2; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(cx + 8, cy - 10); ctx.lineTo(cx + 8, cy - 5); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(cx + 8, cy - 10); ctx.lineTo(cx + 11, cy - 10); ctx.stroke();
-      ctx.lineCap = 'butt';
-
-      // Card reader panel (left wall)
-      ctx.fillStyle = '#0d1825'; ctx.strokeStyle = '#1e2d3d'; ctx.lineWidth = 0.8;
-      ctx.fillRect(cx - 28, cy - 24, 9, 16); ctx.strokeRect(cx - 28, cy - 24, 9, 16);
-      ctx.fillStyle = '#090f18'; ctx.fillRect(cx - 26, cy - 20, 5, 8);
-      // LED indicator
-      ctx.fillStyle = active ? '#34d399' : '#1a2535';
-      ctx.beginPath(); ctx.arc(cx - 23, cy - 10, 2, 0, Math.PI*2); ctx.fill();
-
-      // Room number on wall
-      ctx.fillStyle = '#253040'; ctx.font = '500 5px Inter, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('LAB-01', cx + 23, cy - 22);
-
-      // Floor grating at threshold
-      ctx.fillStyle = '#0a1015';
-      ctx.fillRect(cx - 12, cy + 12, 24, 4);
-      for (let i = 0; i < 5; i++) {
-        ctx.fillStyle = '#111a28';
-        ctx.fillRect(cx - 10 + i * 5, cy + 12, 1, 4);
-      }
-      break;
-    }
-
-    case 'sample': {
-      // ── SAMPLE COLLECTION BENCH ──
-      // Bench top
-      ctx.fillStyle = '#15202e';
-      ctx.fillRect(cx - 36, cy - 8, 72, 7);
-      // Surface highlight edge
-      ctx.fillStyle = active ? 'rgba(52,211,153,0.18)' : 'rgba(255,255,255,0.025)';
-      ctx.fillRect(cx - 36, cy - 9, 72, 2);
-      // Legs + middle support
-      ctx.fillStyle = '#192538';
-      ctx.fillRect(cx - 34, cy - 1, 5, 22);
-      ctx.fillRect(cx + 29, cy - 1, 5, 22);
-      ctx.fillRect(cx - 4,  cy - 1, 4, 22);
-      // Under-shelf
-      ctx.fillStyle = '#131d2c';
-      ctx.fillRect(cx - 34, cy + 13, 68, 4);
-
-      // ── Microscope (left side of bench) ──
-      ctx.fillStyle = '#18273a';
-      ctx.fillRect(cx - 33, cy - 28, 20, 20); // base
-      ctx.fillStyle = '#1d2e42';
-      ctx.fillRect(cx - 26, cy - 42, 6, 16); // column
-      ctx.fillStyle = '#18273a';
-      ctx.strokeStyle = active ? 'rgba(52,211,153,0.3)' : '#1e2d3d'; ctx.lineWidth = 0.8;
-      roundRect(ctx, cx - 33, cy - 50, 18, 10, 2); ctx.fill(); ctx.stroke();
-      // Objective lens glow
-      ctx.fillStyle = active ? 'rgba(52,211,153,0.65)' : '#253040';
-      ctx.beginPath(); ctx.arc(cx - 24, cy - 40, 3, 0, Math.PI*2); ctx.fill();
-      // Eyepiece
-      ctx.fillStyle = '#253040';
-      ctx.fillRect(cx - 25, cy - 51, 4, 5);
-
-      // ── Test tube rack ──
-      ctx.fillStyle = '#1a2840';
-      ctx.fillRect(cx - 8, cy - 32, 44, 24);
-      ctx.strokeStyle = '#253040'; ctx.lineWidth = 0.5; ctx.strokeRect(cx - 8, cy - 32, 44, 24);
-      // Dividers
-      for (let d = 0; d < 5; d++) {
-        ctx.fillStyle = '#253040';
-        ctx.fillRect(cx - 2 + d * 7, cy - 31, 1, 22);
-      }
-      // Tubes
-      for (let i = 0; i < 6; i++) {
-        const tx = cx - 5 + i * 7;
-        const tc = SAMPLE_TUBE_COLORS[i];
-        // Tube body
-        ctx.fillStyle = active ? tc : '#253040';
-        ctx.globalAlpha = active ? 0.75 : 0.35;
-        roundRect(ctx, tx, cy - 40, 5, 16, 1); ctx.fill();
-        // Liquid surface
-        ctx.globalAlpha = active ? 0.35 : 0.1;
-        ctx.fillStyle = active ? tc : '#334155';
-        ctx.fillRect(tx + 1, cy - 30, 3, 4);
-        // Cap
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = active ? tc : '#334155';
-        ctx.fillRect(tx - 0.5, cy - 41, 6, 3);
-      }
-      ctx.globalAlpha = 1;
-
-      // ── Pipette (active only) ──
-      if (active) {
-        const pipY = cy - 44 + Math.sin(t * 0.09) * 5;
-        ctx.strokeStyle = '#64748b'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(cx + 38, pipY - 14); ctx.lineTo(cx + 38, pipY); ctx.stroke();
-        ctx.fillStyle = '#475569';
-        ctx.fillRect(cx + 35, pipY - 20, 7, 8);
-        // Tip
-        ctx.fillStyle = '#94a3b8';
-        ctx.beginPath();
-        ctx.moveTo(cx + 36, pipY); ctx.lineTo(cx + 40, pipY); ctx.lineTo(cx + 38, pipY + 5);
-        ctx.closePath(); ctx.fill();
-        // Droplet
-        const dPhase = t % 90;
-        if (dPhase < 30) {
-          ctx.globalAlpha = Math.sin(dPhase / 30 * Math.PI) * 0.9;
-          ctx.fillStyle = SAMPLE_TUBE_COLORS[Math.floor(t / 90) % 6];
-          ctx.beginPath(); ctx.arc(cx + 38, pipY + 7 + dPhase * 0.25, 1.8, 0, Math.PI*2); ctx.fill();
-          ctx.globalAlpha = 1;
-        }
-        ctx.lineCap = 'butt';
-      }
-      break;
-    }
-
-    case 'cohort': {
-      // ── COHORT / PATIENT DATA ──
-      // Filing cabinet body
-      ctx.fillStyle = '#152030';
-      roundRect(ctx, cx - 24, cy - 38, 36, 56, 3); ctx.fill();
-      ctx.strokeStyle = active ? 'rgba(52,211,153,0.25)' : '#1a2838'; ctx.lineWidth = 1; ctx.stroke();
-
-      // Drawers (4)
-      for (let d = 0; d < 4; d++) {
-        const dy = cy - 34 + d * 13;
-        ctx.fillStyle = '#0f1d2d';
-        ctx.fillRect(cx - 22, dy, 32, 11);
-        ctx.strokeStyle = '#1e2d3d'; ctx.lineWidth = 0.5;
-        ctx.strokeRect(cx - 22, dy, 32, 11);
-        // Handle bar
-        ctx.fillStyle = active ? '#3a4f66' : '#1e2d3d';
-        ctx.fillRect(cx - 10, dy + 4, 18, 2.5);
-        ctx.fillRect(cx - 10, dy + 4, 2, 2.5);
-        ctx.fillRect(cx +  6, dy + 4, 2, 2.5);
-        // Label strip (left side of drawer)
-        ctx.fillStyle = active ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.02)';
-        ctx.fillRect(cx - 21, dy + 1, 9, 9);
-      }
-      // Active drawer: slight pullout with paper visible
-      if (active) {
-        const aD = Math.floor((t * 0.006) % 4);
-        const ddy = cy - 34 + aD * 13;
-        ctx.fillStyle = '#1a2d42';
-        ctx.fillRect(cx - 22, ddy, 32, 11);
-        ctx.fillStyle = '#e2e8f0'; ctx.globalAlpha = 0.07;
-        ctx.fillRect(cx - 19, ddy + 1, 20, 9);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = 'rgba(52,211,153,0.6)';
-        ctx.fillRect(cx - 10, ddy + 4, 18, 2.5);
-      }
-
-      // ── Wall tablet (right side) ──
-      ctx.fillStyle = '#0b1825';
-      ctx.strokeStyle = '#1a2838'; ctx.lineWidth = 1;
-      roundRect(ctx, cx + 14, cy - 38, 26, 40, 3); ctx.fill(); ctx.stroke();
-      // Screen
-      ctx.fillStyle = '#050e1a';
-      ctx.fillRect(cx + 16, cy - 36, 22, 34);
-
-      if (active) {
-        // Header bar
-        ctx.fillStyle = 'rgba(52,211,153,0.12)';
-        ctx.fillRect(cx + 16, cy - 36, 22, 6);
-        ctx.fillStyle = 'rgba(52,211,153,0.5)';
-        ctx.font = '500 4px Inter, sans-serif'; ctx.textAlign = 'left';
-        ctx.fillText('PATIENTS', cx + 17, cy - 31);
-        // Scrolling patient rows
-        const scrollOff = (t * 0.4) % 8;
-        ctx.save();
-        ctx.rect(cx + 16, cy - 30, 22, 28); ctx.clip();
-        for (let row = 0; row < 6; row++) {
-          const ry = cy - 31 + row * 7 - scrollOff % 7;
-          const highlight = row === (Math.floor(t / 40) % 5);
-          ctx.fillStyle = highlight ? 'rgba(52,211,153,0.2)' : 'rgba(52,211,153,0.04)';
-          ctx.fillRect(cx + 16, ry, 22, 6);
-          ctx.fillStyle = highlight ? 'rgba(52,211,153,0.8)' : 'rgba(52,211,153,0.25)';
-          ctx.fillRect(cx + 17, ry + 2, 5 + (row % 3) * 2, 2);
-          ctx.fillRect(cx + 25, ry + 2, 4 + (row % 2) * 2, 2);
-        }
-        ctx.restore();
-        // Selection box
-        ctx.strokeStyle = 'rgba(52,211,153,0.5)'; ctx.lineWidth = 0.8;
-        ctx.strokeRect(cx + 16, cy - 12, 22, 6);
-      } else {
-        for (let r = 0; r < 6; r++) {
-          ctx.fillStyle = '#1a2535';
-          ctx.fillRect(cx + 17, cy - 33 + r * 6, 16, 1.5);
-        }
-      }
-      // Tablet stand nub
-      ctx.fillStyle = '#1a2535';
-      ctx.fillRect(cx + 25, cy + 2, 5, 4);
-      break;
-    }
-
-    case 'prep': {
-      // ── LIBRARY PREP / PCR THERMOCYCLER ──
-      // Bench top
-      ctx.fillStyle = '#15202e';
-      ctx.fillRect(cx - 34, cy - 6, 68, 7);
-      ctx.fillStyle = active ? 'rgba(45,212,191,0.14)' : 'rgba(255,255,255,0.02)';
-      ctx.fillRect(cx - 34, cy - 7, 68, 2);
-      ctx.fillStyle = '#192538';
-      ctx.fillRect(cx - 32, cy + 1, 5, 22);
-      ctx.fillRect(cx + 27, cy + 1, 5, 22);
-
-      // ── Main PCR machine ──
-      ctx.fillStyle = active ? '#0e1d2e' : '#0b1723';
-      ctx.strokeStyle = active ? color : '#1a2838'; ctx.lineWidth = active ? 1.5 : 1;
-      roundRect(ctx, cx - 26, cy - 42, 52, 36, 4); ctx.fill(); ctx.stroke();
-      // Lid (top of machine)
-      ctx.fillStyle = '#0c1925';
-      ctx.strokeStyle = active ? 'rgba(45,212,191,0.4)' : '#1a2535'; ctx.lineWidth = 1;
-      roundRect(ctx, cx - 24, cy - 40, 48, 16, 3); ctx.fill(); ctx.stroke();
-      // Lid heated glow
-      if (active) {
-        const hg = ctx.createLinearGradient(cx - 24, cy - 40, cx + 24, cy - 24);
-        hg.addColorStop(0,   'rgba(251,191,36,0.04)');
-        hg.addColorStop(0.5, 'rgba(251,113,36,0.09)');
-        hg.addColorStop(1,   'rgba(251,191,36,0.04)');
-        ctx.fillStyle = hg;
-        roundRect(ctx, cx - 23, cy - 39, 46, 14, 3); ctx.fill();
-      }
-
-      // Well plate (2 rows × 8 cols visible on lid)
-      for (let r = 0; r < 2; r++) {
-        for (let c = 0; c < 8; c++) {
-          ctx.beginPath(); ctx.arc(cx - 20 + c * 5.5, cy - 35 + r * 5.5, 2, 0, Math.PI*2);
-          if (active) {
-            const heat = Math.sin(t * 0.06 + c * 0.5 + r) * 0.5 + 0.5;
-            ctx.fillStyle = `rgba(45,212,191,${(0.15 + heat * 0.55).toFixed(2)})`;
-          } else {
-            ctx.fillStyle = '#1a2535';
-          }
-          ctx.fill();
-        }
-      }
-
-      // Front display panel
-      ctx.fillStyle = active ? '#080f1a' : '#0a1520';
-      ctx.fillRect(cx - 22, cy - 24, 30, 18);
-      if (active) {
-        ctx.fillStyle = color; ctx.font = '700 7px JetBrains Mono, monospace'; ctx.textAlign = 'left';
-        const tempVal = (70 + Math.sin(t * 0.05) * 2).toFixed(1);
-        ctx.fillText(`${tempVal}°C`, cx - 20, cy - 14);
-        ctx.fillStyle = 'rgba(45,212,191,0.45)'; ctx.font = '500 5px JetBrains Mono, monospace';
-        ctx.fillText(`CYC ${String(Math.floor(t/45) % 36 + 1).padStart(2,'0')}/35`, cx - 20, cy - 9);
-        // Blink LED
-        if (t % 45 < 22) {
-          ctx.fillStyle = color;
-          ctx.beginPath(); ctx.arc(cx + 12, cy - 18, 3, 0, Math.PI*2); ctx.fill();
-        }
-      }
-
-      // ── Reagent bottles (right of machine) ──
-      const bColors = ['#34d399','#22d3ee','#a78bfa'];
-      for (let b = 0; b < 3; b++) {
-        const bx2 = cx + 27; const by2 = cy - 40 + b * 12;
-        ctx.fillStyle = '#111d2c'; ctx.strokeStyle = '#1a2838'; ctx.lineWidth = 0.5;
-        ctx.fillRect(bx2, by2, 8, 10); ctx.strokeRect(bx2, by2, 8, 10);
-        // Cap
-        ctx.fillStyle = bColors[b]; ctx.globalAlpha = active ? 0.7 : 0.25;
-        ctx.fillRect(bx2 + 1, by2 - 3, 6, 4);
-        // Liquid
-        ctx.globalAlpha = active ? 0.22 : 0.08;
-        ctx.fillRect(bx2 + 1, by2 + 3, 6, 6);
-        ctx.globalAlpha = 1;
-      }
-      break;
-    }
-
-    case 'sequencer': {
-      // ── DNA SEQUENCER (NovaSeq-style) ──
-      // Machine body
-      ctx.fillStyle = '#0b1829';
-      ctx.strokeStyle = active ? color : '#1a2838'; ctx.lineWidth = active ? 1.5 : 1;
-      roundRect(ctx, cx - 28, cy - 46, 56, 66, 5); ctx.fill(); ctx.stroke();
-      // Front face
-      ctx.fillStyle = '#091220';
-      roundRect(ctx, cx - 26, cy - 44, 52, 62, 4); ctx.fill();
-
-      // Large touch screen
-      ctx.fillStyle = active ? '#040d18' : '#060f1c';
-      ctx.strokeStyle = active ? 'rgba(34,211,238,0.45)' : '#152030'; ctx.lineWidth = 0.8;
-      roundRect(ctx, cx - 21, cy - 40, 42, 32, 2); ctx.fill(); ctx.stroke();
-
-      if (active) {
-        // ACGT base scroll
-        const bases = ['A','C','G','T'];
-        const bColors2 = { A:'#34d399', C:'#38bdf8', G:'#fbbf24', T:'#f87171' };
-        ctx.font = '700 6px JetBrains Mono, monospace'; ctx.textAlign = 'left';
-        for (let row = 0; row < 4; row++) {
-          for (let col = 0; col < 7; col++) {
-            const bi = (row * 7 + col + Math.floor(t * 0.12)) % 4;
-            const base = bases[bi];
-            ctx.fillStyle = bColors2[base];
-            ctx.globalAlpha = 0.25 + 0.55 * Math.sin(t * 0.09 + row * 1.2 + col * 0.6);
-            ctx.fillText(base, cx - 19 + col * 6, cy - 32 + row * 7);
-          }
-        }
-        ctx.globalAlpha = 1;
-        // Progress bar
-        ctx.fillStyle = 'rgba(34,211,238,0.07)';
-        ctx.fillRect(cx - 19, cy - 12, 38, 3);
-        ctx.fillStyle = color;
-        ctx.fillRect(cx - 19, cy - 12, 38 * ((t % 240) / 240), 3);
-        ctx.fillStyle = color; ctx.font = '500 5px JetBrains Mono, monospace'; ctx.textAlign = 'center';
-        ctx.fillText('SEQUENCING', cx, cy - 7);
-      } else {
-        // Idle — faint dot matrix
-        for (let r = 0; r < 4; r++) for (let c = 0; c < 7; c++) {
-          ctx.fillStyle = 'rgba(34,211,238,0.07)';
-          ctx.beginPath(); ctx.arc(cx - 17 + c * 6, cy - 36 + r * 7, 1.5, 0, Math.PI*2); ctx.fill();
-        }
-      }
-
-      // ACGT indicator LEDs
-      const acColors = ['#34d399','#38bdf8','#fbbf24','#f87171'];
-      const acLabels = ['A','C','G','T'];
-      for (let i = 0; i < 4; i++) {
-        const lx = cx - 14 + i * 9;
-        const lit = active && (Math.floor(t * 0.13) % 4 === i);
-        ctx.fillStyle = lit ? acColors[i] : '#1a2535';
-        ctx.beginPath(); ctx.arc(lx, cy + 4, 3, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = lit ? acColors[i] : '#253040';
-        ctx.font = '500 4.5px Inter, sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(acLabels[i], lx, cy + 12);
-      }
-
-      // Flowcell / cartridge slot
-      ctx.fillStyle = '#040d18';
-      ctx.fillRect(cx - 10, cy + 14, 20, 6);
-      ctx.strokeStyle = '#1e2d3d'; ctx.lineWidth = 0.5; ctx.strokeRect(cx - 10, cy + 14, 20, 6);
-      if (active) {
-        ctx.fillStyle = 'rgba(34,211,238,0.3)';
-        ctx.fillRect(cx - 9, cy + 15, 18, 4);
-      }
-      // Side vent slots
-      for (let v = 0; v < 5; v++) {
-        ctx.fillStyle = '#081018';
-        ctx.fillRect(cx + 22, cy - 22 + v * 8, 4, 5);
-      }
-      break;
-    }
-
-    case 'computer': {
-      // ── COMPUTE STATION ──
-      // Wide desk
-      ctx.fillStyle = '#15202e';
-      ctx.fillRect(cx - 42, cy + 2, 84, 6);
-      ctx.fillStyle = active ? 'rgba(56,189,248,0.1)' : 'rgba(255,255,255,0.02)';
-      ctx.fillRect(cx - 42, cy + 1, 84, 2);
-      ctx.fillStyle = '#192538';
-      ctx.fillRect(cx - 40, cy + 8, 5, 20);
-      ctx.fillRect(cx + 35, cy + 8, 5, 20);
-      // Chair
-      ctx.fillStyle = '#111e2c';
-      ctx.beginPath(); ctx.arc(cx, cy + 30, 9, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#192538';
-      ctx.fillRect(cx - 1, cy + 21, 2, 9);
-
-      // Monitor 1 (left/main — code editor)
-      ctx.fillStyle = active ? '#060e1a' : '#0a1422';
-      ctx.strokeStyle = active ? 'rgba(56,189,248,0.55)' : '#1a2535'; ctx.lineWidth = 1;
-      roundRect(ctx, cx - 40, cy - 34, 38, 30, 2); ctx.fill(); ctx.stroke();
-      // Stand 1
-      ctx.fillStyle = '#253040';
-      ctx.fillRect(cx - 22, cy - 4, 4, 6); ctx.fillRect(cx - 26, cy + 1, 12, 2);
-
-      // Monitor 2 (right — loss curve)
-      ctx.fillStyle = active ? '#060e1a' : '#0a1422';
-      ctx.strokeStyle = active ? 'rgba(56,189,248,0.35)' : '#1a2535'; ctx.lineWidth = 1;
-      roundRect(ctx, cx + 4, cy - 30, 34, 26, 2); ctx.fill(); ctx.stroke();
-      // Stand 2
-      ctx.fillStyle = '#253040';
-      ctx.fillRect(cx + 19, cy - 4, 4, 6); ctx.fillRect(cx + 15, cy + 1, 12, 2);
-
-      if (active) {
-        // ── Left screen: code editor ──
-        ctx.save();
-        ctx.rect(cx - 40, cy - 34, 38, 30); ctx.clip();
-        ctx.fillStyle = 'rgba(56,189,248,0.03)'; ctx.fillRect(cx - 40, cy - 34, 38, 30);
-        // Line-number gutter
-        ctx.fillStyle = 'rgba(56,189,248,0.05)'; ctx.fillRect(cx - 40, cy - 34, 7, 30);
-        // Syntax-highlighted lines
-        const synColors = ['#f87171','#34d399','#fbbf24','#38bdf8','#a78bfa','#34d399','#fb923c'];
-        for (let li = 0; li < 8; li++) {
-          const ly2 = cy - 30 + li * 3.5;
-          const indent = li % 3 === 0 ? 0 : 6;
-          const len1 = 8 + Math.sin(li * 2.1 + t * 0.02) * 6;
-          ctx.fillStyle = synColors[li % synColors.length]; ctx.globalAlpha = 0.55;
-          ctx.fillRect(cx - 31 + indent, ly2, len1, 2.2);
-          if (len1 < 16) {
-            ctx.fillStyle = synColors[(li + 2) % synColors.length];
-            ctx.fillRect(cx - 31 + indent + len1 + 2, ly2, 5 + (li % 3) * 2, 2.2);
-          }
-        }
-        ctx.globalAlpha = 1;
-        // Cursor blink
-        if (t % 60 < 30) {
-          ctx.fillStyle = 'rgba(56,189,248,0.85)';
-          ctx.fillRect(cx - 31 + 14, cy - 30 + (Math.floor(t / 60) % 8) * 3.5, 1.2, 3);
-        }
-        ctx.restore();
-
-        // ── Right screen: training loss curve ──
-        ctx.save();
-        ctx.rect(cx + 4, cy - 30, 34, 26); ctx.clip();
-        ctx.fillStyle = 'rgba(56,189,248,0.025)'; ctx.fillRect(cx + 4, cy - 30, 34, 26);
-        // Axis lines
-        ctx.strokeStyle = 'rgba(56,189,248,0.18)'; ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(cx + 8, cy - 7); ctx.lineTo(cx + 36, cy - 7);   // x
-        ctx.moveTo(cx + 8, cy - 28); ctx.lineTo(cx + 8,  cy - 7);  // y
-        ctx.stroke();
-        // Loss curve (descending exponential-ish)
-        ctx.strokeStyle = color; ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        for (let pp = 0; pp < 22; pp++) {
-          const px2 = cx + 9 + pp * 1.22;
-          const py2 = cy - 26 + pp * 0.7 + Math.sin(pp * 1.4 + t * 0.04) * 1.2;
-          if (pp === 0) ctx.moveTo(px2, py2); else ctx.lineTo(px2, py2);
-        }
-        ctx.stroke();
-        // Area fill under curve
-        ctx.fillStyle = 'rgba(56,189,248,0.05)';
-        ctx.beginPath();
-        for (let pp = 0; pp < 22; pp++) {
-          const px2 = cx + 9 + pp * 1.22;
-          const py2 = cy - 26 + pp * 0.7 + Math.sin(pp * 1.4 + t * 0.04) * 1.2;
-          if (pp === 0) ctx.moveTo(px2, py2); else ctx.lineTo(px2, py2);
-        }
-        ctx.lineTo(cx + 9 + 21 * 1.22, cy - 7);
-        ctx.lineTo(cx + 9, cy - 7); ctx.closePath(); ctx.fill();
-        // Label
-        ctx.fillStyle = color; ctx.font = '500 4.5px JetBrains Mono, monospace'; ctx.textAlign = 'left';
-        ctx.fillText('loss', cx + 10, cy - 25);
-        ctx.restore();
-      }
-
-      // Keyboard
-      ctx.fillStyle = '#111e2c'; ctx.strokeStyle = '#1a2535'; ctx.lineWidth = 0.5;
-      roundRect(ctx, cx - 20, cy + 4, 40, 8, 1); ctx.fill(); ctx.stroke();
-      for (let row = 0; row < 2; row++) {
-        for (let k = 0; k < 10; k++) {
-          ctx.fillStyle = '#192538';
-          ctx.fillRect(cx - 18 + k * 4, cy + 5 + row * 3.5, 3, 2.5);
-        }
-      }
-      if (active && agent.working) {
-        const kx = cx - 16 + (t % 28) * 1.1;
-        ctx.fillStyle = 'rgba(56,189,248,0.55)'; ctx.fillRect(kx, cy + 5, 3, 2.5);
-      }
-      // Coffee mug
-      ctx.fillStyle = '#1a2535';
-      ctx.fillRect(cx + 33, cy - 4, 8, 9);
-      ctx.fillStyle = '#253040';
-      ctx.fillRect(cx + 34, cy - 3, 6, 7);
-      // Handle
-      ctx.strokeStyle = '#1a2535'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.arc(cx + 42, cy, 3, -0.8, 0.8); ctx.stroke();
-      ctx.lineCap = 'butt';
-      // Steam
-      if (active) {
-        for (let s = 0; s < 2; s++) {
-          const steamPhase = (t * 0.6 + s * 18) % 24;
-          ctx.globalAlpha = (1 - steamPhase / 24) * 0.25;
-          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.8; ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.moveTo(cx + 35 + s * 2, cy - 4 - steamPhase * 0.3);
-          ctx.quadraticCurveTo(cx + 37 + s * 2, cy - 8 - steamPhase * 0.3, cx + 35 + s * 2, cy - 12 - steamPhase * 0.3);
-          ctx.stroke();
-          ctx.lineCap = 'butt';
-        }
-        ctx.globalAlpha = 1;
-      }
-      break;
-    }
-
-    case 'whiteboard': {
-      // ── SYNTHESIS / WHITEBOARD ──
-      // Board frame
-      ctx.fillStyle = '#111e30';
-      ctx.strokeStyle = active ? 'rgba(167,139,250,0.45)' : '#1a2838'; ctx.lineWidth = active ? 1.5 : 1;
-      roundRect(ctx, cx - 36, cy - 46, 72, 50, 3); ctx.fill(); ctx.stroke();
-      // Board surface
-      ctx.fillStyle = active ? '#0c1825' : '#091420';
-      roundRect(ctx, cx - 33, cy - 43, 66, 42, 2); ctx.fill();
-      if (active) {
-        ctx.fillStyle = 'rgba(167,139,250,0.03)';
-        roundRect(ctx, cx - 33, cy - 43, 66, 42, 2); ctx.fill();
-      }
-
-      if (active) {
-        // Helper: draw hexagon ring
-        const hex = (hx, hy, hr, hc, alpha) => {
-          ctx.strokeStyle = hc; ctx.globalAlpha = alpha; ctx.lineWidth = 1;
-          ctx.beginPath();
-          for (let i = 0; i < 6; i++) {
-            const a = (i * Math.PI) / 3 - Math.PI / 6;
-            const px2 = hx + hr * Math.cos(a), py2 = hy + hr * Math.sin(a);
-            i === 0 ? ctx.moveTo(px2, py2) : ctx.lineTo(px2, py2);
-          }
-          ctx.closePath(); ctx.stroke();
-          ctx.globalAlpha = 1;
-        };
-
-        // Fused bicyclic ring (BCL-2 core scaffold)
-        hex(cx - 12, cy - 26, 9, '#a78bfa', 0.65);
-        hex(cx +  4, cy - 26, 9, '#a78bfa', 0.65);
-        hex(cx -  4, cy - 14, 9, '#a78bfa', 0.45);
-
-        // Substituents
-        ctx.strokeStyle = 'rgba(167,139,250,0.4)'; ctx.lineWidth = 0.9;
-        ctx.beginPath();
-        ctx.moveTo(cx - 21, cy - 26); ctx.lineTo(cx - 28, cy - 23); // N group
-        ctx.moveTo(cx + 13, cy - 26); ctx.lineTo(cx + 20, cy - 23); // Cl group
-        ctx.moveTo(cx - 4,  cy - 5);  ctx.lineTo(cx - 4,  cy);      // OH group
-        ctx.stroke();
-        // Atom labels
-        ctx.fillStyle = '#c4b5fd'; ctx.font = '600 5.5px JetBrains Mono, monospace'; ctx.textAlign = 'center';
-        ctx.fillText('N',  cx - 30, cy - 20);
-        ctx.fillText('Cl', cx + 22, cy - 20);
-        ctx.fillText('O',  cx - 4,  cy + 4);
-
-        // Equation line
-        ctx.fillStyle = 'rgba(167,139,250,0.5)'; ctx.font = '500 5.5px JetBrains Mono, monospace'; ctx.textAlign = 'left';
-        ctx.fillText('BCL-2i + venet.', cx - 31, cy + 7);
-        ctx.fillStyle = '#34d399';
-        ctx.fillText('→ ΔΔG ↓  IC₅₀ ↓', cx - 31, cy + 14);
-
-        // Animated writing cursor
-        if (t % 100 < 65) {
-          ctx.fillStyle = 'rgba(167,139,250,0.85)';
-          const cpx = cx - 31 + ((t % 100) / 65) * 58;
-          ctx.fillRect(cpx, cy + 8, 1.2, 5);
-        }
-      } else {
-        // Idle: faint ruled lines + ghost hex
-        ctx.strokeStyle = '#131f2f'; ctx.lineWidth = 0.4;
-        for (let li = 0; li < 6; li++) {
-          ctx.beginPath();
-          ctx.moveTo(cx - 31, cy - 40 + li * 8);
-          ctx.lineTo(cx + 31, cy - 40 + li * 8);
-          ctx.stroke();
-        }
-        // Ghost molecule
-        ctx.strokeStyle = 'rgba(167,139,250,0.07)'; ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const a = (i * Math.PI) / 3 - Math.PI / 6;
-          const px2 = cx - 10 + 8 * Math.cos(a), py2 = cy - 24 + 8 * Math.sin(a);
-          i === 0 ? ctx.moveTo(px2, py2) : ctx.lineTo(px2, py2);
-        }
-        ctx.closePath(); ctx.stroke();
-      }
-
-      // Marker tray
-      ctx.fillStyle = '#192538';
-      ctx.fillRect(cx - 34, cy + 4, 72, 5);
-      const mColors = ['#f87171','#34d399','#38bdf8','#a78bfa','#fbbf24'];
-      for (let m = 0; m < 5; m++) {
-        ctx.fillStyle = mColors[m]; ctx.globalAlpha = 0.65;
-        ctx.fillRect(cx - 28 + m * 12, cy + 5, 4, 3);
-        ctx.globalAlpha = 1;
-      }
-
-      // Standing desk below board
-      ctx.fillStyle = '#15202e';
-      ctx.fillRect(cx - 22, cy + 9, 44, 5);
-      ctx.fillStyle = '#192538';
-      ctx.fillRect(cx - 3, cy + 14, 5, 16);
-      break;
+  // Cluster labels
+  if (umapClustered && clusterT > 0.65) {
+    const la = Math.min(1, (clusterT - 0.55) / 0.45);
+    for (const cl of UMAP_CLUSTERS) {
+      const {r,g,b} = hexToRgb(cl.color);
+      ctx.fillStyle = `rgba(${r},${g},${b},${(la * 0.88).toFixed(2)})`;
+      ctx.font = '600 8px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(cl.label, toSX(cl.cx), toSY(cl.cy) - 13);
     }
   }
 
-  ctx.restore();
+  // Gene annotations
+  if (umapAnnotate) {
+    const aa = Math.min(1, (now - umapAnnotTime) / 1000);
+    ctx.font = '500 8px JetBrains Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = `rgba(249,115,22,${(aa * 0.75).toFixed(2)})`;
+    ctx.fillText('MCL1↑  BCL2A1↑', toSX(UMAP_CLUSTERS[4].cx + 0.07), toSY(UMAP_CLUSTERS[4].cy + 0.05));
+    ctx.fillStyle = `rgba(236,72,153,${(aa * 0.75).toFixed(2)})`;
+    ctx.fillText('JAK2↑  STAT5A↑', toSX(UMAP_CLUSTERS[5].cx + 0.06), toSY(UMAP_CLUSTERS[5].cy + 0.05));
+  }
+
+  // Cell count overlay
+  if (umapVisible) {
+    ctx.fillStyle = 'rgba(56,189,248,0.35)';
+    ctx.font = '500 8.5px JetBrains Mono, monospace';
+    ctx.textAlign = 'left';
+    const shown = UMAP_CELLS.filter(c => c.delay <= revealT).length;
+    ctx.fillText(`n = ${shown.toLocaleString()}`, mL + 4, mT + 14);
+    if (umapClustered) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(56,189,248,0.3)';
+      ctx.fillText('Leiden  res=0.6', labW - mR - 4, mT + 14);
+    }
+  }
+
+  requestAnimationFrame(drawUMAP);
 }
 
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
+drawUMAP();
 
-drawLab();
+// ==== RADAR CHART (Step Reward) ====
+const radarCanvas = document.getElementById('radarCanvas');
+const radarCtx = radarCanvas.getContext('2d');
+const RADAR_METRICS = ['validity','ordering','info_gain','efficiency','novelty','penalty'];
+const RADAR_LABELS  = ['Validity','Ordering','Info Gain','Efficiency','Novelty','Penalty'];
+const RADAR_COLORS  = ['#6366f1','#06b6d4','#f97316','#10b981','#ec4899','#ef4444'];
+
+function drawRadar(reward) {
+  const rect = radarCanvas.getBoundingClientRect();
+  const d = window.devicePixelRatio || 1;
+  radarCanvas.width  = rect.width  * d;
+  radarCanvas.height = rect.height * d;
+  radarCtx.setTransform(d, 0, 0, d, 0, 0);
+  const W = rect.width, H = rect.height;
+  radarCtx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2 + 6;
+  const maxR = Math.min(W * 0.5, H * 0.5) - 26;
+
+  // Grid rings + ring label
+  for (let g = 1; g <= 4; g++) {
+    radarCtx.strokeStyle = 'rgba(255,255,255,0.05)'; radarCtx.lineWidth = 0.5;
+    radarCtx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (i/6)*Math.PI*2 - Math.PI/2;
+      const r = maxR * g / 4;
+      const px = cx + r*Math.cos(a), py = cy + r*Math.sin(a);
+      i === 0 ? radarCtx.moveTo(px,py) : radarCtx.lineTo(px,py);
+    }
+    radarCtx.closePath(); radarCtx.stroke();
+  }
+  // 1.0 ring label
+  radarCtx.fillStyle = 'rgba(100,116,139,0.4)';
+  radarCtx.font = '400 7px Inter,sans-serif';
+  radarCtx.textAlign = 'left'; radarCtx.textBaseline = 'middle';
+  radarCtx.fillText('1.0', cx + maxR + 3, cy);
+
+  // Axes + labels
+  for (let i = 0; i < 6; i++) {
+    const a = (i/6)*Math.PI*2 - Math.PI/2;
+    radarCtx.strokeStyle = 'rgba(255,255,255,0.07)'; radarCtx.lineWidth = 0.5;
+    radarCtx.beginPath();
+    radarCtx.moveTo(cx, cy);
+    radarCtx.lineTo(cx + maxR*Math.cos(a), cy + maxR*Math.sin(a));
+    radarCtx.stroke();
+    const lx = cx + (maxR+18)*Math.cos(a), ly = cy + (maxR+18)*Math.sin(a);
+    radarCtx.fillStyle = `rgba(${hexToRgb(RADAR_COLORS[i]).r},${hexToRgb(RADAR_COLORS[i]).g},${hexToRgb(RADAR_COLORS[i]).b},0.7)`;
+    radarCtx.font = '500 8.5px Inter,sans-serif'; radarCtx.textAlign = 'center'; radarCtx.textBaseline = 'middle';
+    radarCtx.fillText(RADAR_LABELS[i], lx, ly);
+  }
+
+  if (!reward) { radarCtx.textBaseline = 'alphabetic'; return; }
+
+  // Filled polygon
+  radarCtx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i/6)*Math.PI*2 - Math.PI/2;
+    const val = Math.min(1, reward[RADAR_METRICS[i]] || 0);
+    const px = cx + maxR*val*Math.cos(a), py = cy + maxR*val*Math.sin(a);
+    i === 0 ? radarCtx.moveTo(px,py) : radarCtx.lineTo(px,py);
+  }
+  radarCtx.closePath();
+  const grd = radarCtx.createRadialGradient(cx, cy, 0, cx, cy, maxR);
+  grd.addColorStop(0, 'rgba(56,189,248,0.38)');
+  grd.addColorStop(1, 'rgba(56,189,248,0.06)');
+  radarCtx.fillStyle = grd; radarCtx.fill();
+  radarCtx.strokeStyle = 'rgba(56,189,248,0.7)'; radarCtx.lineWidth = 1.5; radarCtx.stroke();
+
+  // Metric dots
+  for (let i = 0; i < 6; i++) {
+    const a = (i/6)*Math.PI*2 - Math.PI/2;
+    const val = Math.min(1, reward[RADAR_METRICS[i]] || 0);
+    const px = cx + maxR*val*Math.cos(a), py = cy + maxR*val*Math.sin(a);
+    radarCtx.fillStyle = RADAR_COLORS[i];
+    radarCtx.beginPath(); radarCtx.arc(px, py, 3.5, 0, Math.PI*2); radarCtx.fill();
+  }
+  radarCtx.textBaseline = 'alphabetic';
+}
 
 // =====================================================
 // EPISODE DATA + APP LOGIC
@@ -1283,19 +569,11 @@ function setGauge(id, value, pct, color) {
 }
 
 function setRewardBars(r) {
-  for (const key of REWARD_METRICS) {
-    const el = document.getElementById('rw-' + key);
-    el.style.width = (r[key] * 100) + '%';
-    el.textContent = r[key] > 0.01 ? r[key].toFixed(2) : '';
-  }
+  drawRadar(r);
 }
 
 function clearRewardBars() {
-  for (const key of REWARD_METRICS) {
-    const el = document.getElementById('rw-' + key);
-    el.style.width = '0%';
-    el.textContent = '';
-  }
+  drawRadar(null);
 }
 
 function setFinalGradePending() {
@@ -1383,7 +661,7 @@ async function startDemo() {
   clearRewardBars();
   resetFinalGradeCard();
   applyDefaultUiState();
-  initAgent();
+  initUMAP();
 
   addLine(DEMO_COPY.introLines[0]);
   await wait(500); if (episodeId !== myId) return;
@@ -1407,7 +685,6 @@ async function startDemo() {
   if (episodeId !== myId) return;
 
   // Done
-  moveAgentTo('idle');
   labActionLabel.classList.remove('visible');
   addLine('');
   addLine(DEMO_COPY.completionLines[0]);
@@ -1427,18 +704,13 @@ async function startDemo() {
 
 async function runStep(i, myId) {
   const step = EPISODE[i];
-  const station = ACTION_STATION[step.action] || 'computer';
 
-  // Move agent in lab
-  moveAgentTo(station);
+  // Advance UMAP visualization
+  advanceUMAPPhase(i);
   labActionLabel.textContent = step.action + '()';
   labActionLabel.classList.add('visible');
-  await wait(800); // wait for agent to travel
+  await wait(600);
   if (episodeId !== myId) return;
-
-  // Start working animation
-  setAgentWorking(step.action);
-  spawnParticles(agent.targetX, agent.targetY, STATIONS[station].color);
 
   // Pipeline sidebar
   const pipeEl = addPipeStep(step, i);
@@ -1501,10 +773,6 @@ async function runStep(i, myId) {
 
   if (step.discovery) addDiscovery(step.discovery);
 
-  // Done working
-  agent.working = false;
-  spawnParticles(agent.targetX, agent.targetY, '#34d399', 6);
-
   if (step.terminal) {
     renderFinalGradeCard(FINAL_GRADE);
     pipeEl.classList.remove('active');
@@ -1527,7 +795,7 @@ function resetDemo() {
   resetFinalGradeCard();
   applyDefaultUiState();
   labActionLabel.classList.remove('visible');
-  initAgent();
+  initUMAP();
   addLine(DEMO_COPY.resetLine);
 }
 
