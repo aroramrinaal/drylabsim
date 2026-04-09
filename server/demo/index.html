@@ -22,7 +22,13 @@
   <div class="topbar-sep"></div>
   <div class="topbar-logo">DryLabSim</div>
   <div class="topbar-sep"></div>
-  <div class="topbar-env">AML Resistance · Expert</div>
+  <div class="topbar-context">
+    <div class="topbar-title">Venetoclax Resistance &mdash; AML Multiclone</div>
+    <div class="topbar-subtitle">
+      Homo sapiens &nbsp;&middot;&nbsp; Bone marrow &nbsp;&middot;&nbsp; scRNA-seq
+      <span class="topbar-diff-badge expert">Expert</span>
+    </div>
+  </div>
   <div class="topbar-status">
     <div class="status-dot" id="statusDot"></div>
     <span id="statusText">Ready</span>
@@ -33,7 +39,10 @@
   <!-- Left Sidebar -->
   <div class="sidebar">
     <div class="sidebar-section">
-      <div class="sidebar-heading">Scenario</div>
+      <div class="sidebar-section-head">
+        <div class="sidebar-heading">Scenario</div>
+        <span class="sc-count-tag">4 datasets</span>
+      </div>
       <div class="scenario-list" id="scenarioList"></div>
     </div>
     <div class="sidebar-section">
@@ -540,13 +549,39 @@ function applyDefaultUiState() {
   setGauge('step', DEFAULT_UI_STATE.gauges.step.value, DEFAULT_UI_STATE.gauges.step.pct, DEFAULT_UI_STATE.gauges.step.color);
 }
 
+const SC_META = {
+  cardiac_disease_de:               { sub: 'H. sapiens · BM aspirate', assay: 'scRNA-seq',   diffLevel: 1 },
+  hematopoiesis_trajectory:         { sub: 'M. musculus · Thymus',     assay: 'scATAC-seq',  diffLevel: 2 },
+  perturbation_immune:              { sub: 'H. sapiens · PBMCs',       assay: 'Perturb-seq', diffLevel: 3 },
+  venetoclax_resistance_multiclone: { sub: 'H. sapiens · BM',          assay: 'scRNA-seq',   diffLevel: 4 },
+};
+
 function renderScenarioOptions() {
   scenarioListEl.innerHTML = '';
   for (const scenario of SCENARIO_CATALOG) {
+    const meta = SC_META[scenario.slug] || { sub: '', assay: 'scRNA-seq', diffLevel: 2 };
     const el = document.createElement('div');
-    el.className = 'scenario-opt' + (scenario.active ? ' active' : '');
+    el.className = 'sc-card' + (scenario.active ? ' active' : '');
     el.dataset.slug = scenario.slug;
-    el.innerHTML = `<div class="sc-dot" style="background: ${scenario.color};"></div><span class="sc-name">${scenario.name}</span><span class="sc-diff" style="color: ${scenario.color};">${scenario.difficulty}</span>`;
+    const nameColor = scenario.active ? `color:${scenario.color}` : '';
+    let pips = '';
+    for (let d = 0; d < 4; d++) {
+      const fill = d < meta.diffLevel ? scenario.color : 'rgba(255,255,255,0.08)';
+      pips += `<span class="sc-diff-pip" style="background:${fill}"></span>`;
+    }
+    el.innerHTML = `
+      <div class="sc-card-accent" style="background:${scenario.color}"></div>
+      <div class="sc-card-body">
+        <div class="sc-card-name" style="${nameColor}">${scenario.name}</div>
+        <div class="sc-card-sub">${meta.sub}</div>
+        <div class="sc-card-footer">
+          <span class="sc-assay">${meta.assay}</span>
+          <div class="sc-diff">
+            ${pips}
+            <span class="sc-diff-label" style="color:${scenario.color}">${scenario.difficulty}</span>
+          </div>
+        </div>
+      </div>`;
     el.onclick = () => selectScenario(el);
     scenarioListEl.appendChild(el);
   }
@@ -640,8 +675,18 @@ function addRewardHistory(step, index) {
 
 function selectScenario(el) {
   if (running) return;
-  document.querySelectorAll('.scenario-opt').forEach(e => e.classList.remove('active'));
+  document.querySelectorAll('.sc-card').forEach(e => {
+    e.classList.remove('active');
+    const nameEl = e.querySelector('.sc-card-name');
+    if (nameEl) nameEl.style.color = '';
+  });
   el.classList.add('active');
+  const slug = el.dataset.slug;
+  const scenario = SCENARIO_CATALOG.find(s => s.slug === slug);
+  if (scenario) {
+    const nameEl = el.querySelector('.sc-card-name');
+    if (nameEl) nameEl.style.color = scenario.color;
+  }
 }
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
