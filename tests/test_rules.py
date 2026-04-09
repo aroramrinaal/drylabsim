@@ -169,7 +169,9 @@ class TestMetaActionTiming:
         violations = engine.check(
             ExperimentAction(
                 action_type=ActionType.SYNTHESIZE_CONCLUSION,
-                parameters={"claims": [{"top_markers": ["STAT1"], "evidence_steps": [3, 4]}]},
+                parameters={
+                    "claims": [{"top_markers": ["STAT1"], "evidence_steps": [3, 4]}]
+                },
             ),
             s,
         )
@@ -278,13 +280,114 @@ class TestMetaActionTiming:
         assert any("fewer than two resistant mechanisms" in m.lower() for m in hard)
 
 
+class TestValidateMarkerRedundancy:
+    def test_same_marker_same_subpop_is_blocked(self):
+        engine = RuleEngine()
+        s = _state(markers_discovered=True, markers_validated=True)
+        s.validated_marker_pairs = ["MCL1::cluster_1"]
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "MCL1", "subpopulation_id": "cluster_1"},
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert any("already validated" in m.lower() for m in hard)
+
+    def test_same_marker_different_subpop_is_allowed(self):
+        engine = RuleEngine()
+        s = _state(markers_discovered=True, markers_validated=True)
+        s.validated_marker_pairs = ["MCL1::cluster_1"]
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "MCL1", "subpopulation_id": "cluster_2"},
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert not any("redundant" in m.lower() for m in hard)
+
+    def test_different_marker_same_subpop_is_allowed(self):
+        engine = RuleEngine()
+        s = _state(markers_discovered=True, markers_validated=True)
+        s.validated_marker_pairs = ["MCL1::cluster_1"]
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "BCL2A1", "subpopulation_id": "cluster_1"},
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert not any("redundant" in m.lower() for m in hard)
+
+    def test_different_marker_different_subpop_is_allowed(self):
+        engine = RuleEngine()
+        s = _state(markers_discovered=True, markers_validated=True)
+        s.validated_marker_pairs = ["MCL1::cluster_1"]
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "JAK2", "subpopulation_id": "cluster_2"},
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert not any("redundant" in m.lower() for m in hard)
+
+    def test_no_subpop_same_marker_is_blocked(self):
+        engine = RuleEngine()
+        s = _state(markers_discovered=True, markers_validated=True)
+        s.validated_marker_pairs = ["NPPA"]
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "NPPA"},
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert any("already validated" in m.lower() for m in hard)
+
+    def test_no_subpop_different_marker_is_allowed(self):
+        engine = RuleEngine()
+        s = _state(markers_discovered=True, markers_validated=True)
+        s.validated_marker_pairs = ["NPPA"]
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "BCL2A1"},
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert not any("redundant" in m.lower() for m in hard)
+
+    def test_first_validate_marker_never_blocked_by_pair_check(self):
+        engine = RuleEngine()
+        s = _state(markers_discovered=True, markers_validated=True)
+        s.validated_marker_pairs = []
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.VALIDATE_MARKER,
+                parameters={"marker": "MCL1", "subpopulation_id": "cluster_1"},
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert not any("redundant" in m.lower() for m in hard)
+
+
 class TestResourceConstraints:
     def test_exhausted_budget_blocked(self):
         s = _state()
         s.resources.budget_used = 100_000
         engine = RuleEngine()
         violations = engine.check(
-            ExperimentAction(action_type=ActionType.COLLECT_SAMPLE), s,
+            ExperimentAction(action_type=ActionType.COLLECT_SAMPLE),
+            s,
         )
         hard = engine.hard_violations(violations)
         assert any("budget" in m.lower() for m in hard)

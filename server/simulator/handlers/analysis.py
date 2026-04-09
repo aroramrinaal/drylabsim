@@ -26,9 +26,8 @@ _MULTICLONE_EXPERT_SCENARIO = "venetoclax_resistance_multiclone"
 
 
 def _is_multiclone_expert(s: FullLatentState) -> bool:
-    return (
-        s.scenario_name == _MULTICLONE_EXPERT_SCENARIO
-        and bool(s.biology.clone_truth)
+    return s.scenario_name == _MULTICLONE_EXPERT_SCENARIO and bool(
+        s.biology.clone_truth
     )
 
 
@@ -104,8 +103,8 @@ def trajectory_analysis(
         cluster_lineages = {}
         branch_confidence: Dict[str, float] = {}
         for clone_name, truth in clone_truth.items():
-            conf = 0.80 if clone_name == dominant_clone else (
-                0.68 if integrated else 0.45
+            conf = (
+                0.80 if clone_name == dominant_clone else (0.68 if integrated else 0.45)
             )
             cluster_id = cluster_aliases[clone_name]
             cluster_lineages[cluster_id] = {
@@ -132,7 +131,8 @@ def trajectory_analysis(
                 "cluster_lineages": cluster_lineages,
                 "branch_confidence": branch_confidence,
                 "minor_branch_detected": (
-                    branch_confidence.get(cluster_aliases.get(minor_clone or ""), 0.0) > 0.5
+                    branch_confidence.get(cluster_aliases.get(minor_clone or ""), 0.0)
+                    > 0.5
                 ),
             },
             uncertainty=0.18 if integrated else 0.36,
@@ -188,14 +188,13 @@ def pathway_enrichment(
         flattened: List[Dict[str, Any]] = []
         for clone_name, truth in clone_truth.items():
             pathway_scores = truth.get("pathways", {})
-            clone_detected = not (
-                clone_name == minor_clone and not integrated
-            )
+            clone_detected = not (clone_name == minor_clone and not integrated)
             clone_top = [
                 {
                     "pathway": pw,
                     "score": round(
-                        activity + float(gen.noise.rng.normal(0, 0.06 if integrated else 0.12)),
+                        activity
+                        + float(gen.noise.rng.normal(0, 0.06 if integrated else 0.12)),
                         3,
                     ),
                 }
@@ -210,9 +209,7 @@ def pathway_enrichment(
             }
             if clone_detected:
                 for item in clone_top[:2]:
-                    flattened.append(
-                        {**item, "cluster_id": cluster_id}
-                    )
+                    flattened.append({**item, "cluster_id": cluster_id})
 
         for pathway, activity in sorted(
             s.biology.confounders.items(),
@@ -300,9 +297,7 @@ def regulatory_network(
         top_regulators: List[str] = []
         for clone_name, truth in clone_truth.items():
             regulators = list(truth.get("regulators", []))
-            clone_detected = not (
-                clone_name == minor_clone and not integrated
-            )
+            clone_detected = not (clone_name == minor_clone and not integrated)
             shuffled = gen.noise.shuffle_ranking(regulators, 0.3)
             cluster_regulators[cluster_aliases[clone_name]] = {
                 "detected": clone_detected,
@@ -327,7 +322,11 @@ def regulatory_network(
                 "cluster_regulators": cluster_regulators,
             },
             uncertainty=0.22 if integrated else 0.39,
-            artifacts_available=["regulon_table", "grn_adjacency", "cluster_grn_summary"],
+            artifacts_available=[
+                "regulon_table",
+                "grn_adjacency",
+                "cluster_grn_summary",
+            ],
         )
 
     true_net = s.biology.true_regulatory_network
@@ -378,7 +377,9 @@ def marker_selection(
         observed_markers: List[str] = []
         for clone_name, truth in clone_truth.items():
             markers = list(truth.get("markers", []))
-            markers.extend(list(truth.get("decoy_markers", []))[:2 if integrated else 3])
+            markers.extend(
+                list(truth.get("decoy_markers", []))[: 2 if integrated else 3]
+            )
             if clone_name == minor_clone and not integrated:
                 markers = markers[:2]
             cluster_markers[cluster_aliases[clone_name]] = markers
@@ -428,16 +429,19 @@ def validate_marker(
     """Validate marker handler."""
 
     marker = action.parameters.get("marker", "unknown")
+    subpop = action.parameters.get("subpopulation_id", "")
     is_true = marker in s.biology.true_markers
     validation_correct = not gen.noise.coin_flip(0.1)
     validated = is_true == validation_correct
+    subpop_label = f" in {subpop}" if subpop else ""
     return IntermediateOutput(
         output_type=OutputType.VALIDATION_RESULT,
         step_index=idx,
         quality_score=0.9 if validation_correct else 0.4,
-        summary=f"Marker {marker}: {'validated' if validated else 'not validated'}",
+        summary=f"Marker {marker}{subpop_label}: {'validated' if validated else 'not validated'}",
         data={
             "marker": marker,
+            "subpopulation_id": subpop,
             "validated": validated,
             "assay": action.method or "qPCR",
             "effect_size": gen.noise.sample_qc_metric(
