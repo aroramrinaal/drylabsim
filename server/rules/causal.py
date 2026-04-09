@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import Any, List, Optional
 
 try:
     from ...models import ActionType, ExperimentAction
@@ -58,6 +58,40 @@ def _clonal_claim_dicts(claims: List[dict]) -> List[dict]:
     return nested
 
 
+def _extract_mechanism_text(value: Any) -> Optional[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, dict):
+        for key in ("mechanism", "name", "description", "claim"):
+            nested = value.get(key)
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+    return None
+
+
+def _claim_mechanisms(claim: dict) -> List[str]:
+    return [
+        mechanism
+        for mechanism in (
+            _extract_mechanism_text(item)
+            for item in claim.get("causal_mechanisms", [])
+        )
+        if mechanism is not None
+    ]
+
+
+def _clonal_mechanisms(clonal_claims: List[dict]) -> List[str]:
+    return [
+        mechanism
+        for mechanism in (
+            _extract_mechanism_text(clonal_claim.get("mechanism"))
+            for clonal_claim in clonal_claims
+        )
+        if mechanism is not None
+    ]
+
+
 def check_causal_validity(
     action: ExperimentAction, s: FullLatentState
 ) -> List[RuleViolation]:
@@ -97,9 +131,9 @@ def check_causal_validity(
         has_marker_claims = any(claim.get("top_markers") for claim in claims) or any(
             claim.get("markers") for claim in clonal_claims
         )
-        has_mechanism_claims = any(
-            claim.get("causal_mechanisms") for claim in claims
-        ) or any(claim.get("mechanism") for claim in clonal_claims)
+        has_mechanism_claims = any(_claim_mechanisms(claim) for claim in claims) or any(
+            _clonal_mechanisms(clonal_claims)
+        )
 
         if not s.progress.de_performed and not s.progress.cells_clustered:
             vs.append(
@@ -146,11 +180,8 @@ def check_causal_validity(
         if has_mechanism_claims and any(
             not claim.get("evidence_steps")
             for claim in claims
-            if claim.get("causal_mechanisms")
-            or any(
-                isinstance(item, dict) and item.get("mechanism")
-                for item in claim.get("clonal_claims", [])
-            )
+            if _claim_mechanisms(claim)
+            or _clonal_mechanisms(_clonal_claim_dicts([claim]))
         ):
             vs.append(
                 RuleViolation(
@@ -238,11 +269,9 @@ def check_causal_validity(
 
         unique_claim_mechs = set()
         for claim in claims:
-            unique_claim_mechs.update(claim.get("causal_mechanisms", []))
+            unique_claim_mechs.update(_claim_mechanisms(claim))
             unique_claim_mechs.update(
-                nested.get("mechanism", "")
-                for nested in claim.get("clonal_claims", [])
-                if isinstance(nested, dict) and nested.get("mechanism")
+                _clonal_mechanisms(_clonal_claim_dicts([claim]))
             )
             if claim.get("claim_type") == "causal":
                 if (

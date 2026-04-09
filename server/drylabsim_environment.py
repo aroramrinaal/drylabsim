@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
+from pydantic import ValidationError
 
 try:
     from ..models import (
@@ -205,7 +206,12 @@ class BioExperimentEnvironment(Environment):
             raw_claims = action.parameters.get("claims", [])
             for c in raw_claims:
                 if isinstance(c, dict):
-                    self._conclusions.append(ConclusionClaim(**c))
+                    try:
+                        self._conclusions.append(ConclusionClaim.model_validate(c))
+                    except ValidationError:
+                        # HTTP callers are validated earlier; this keeps direct env
+                        # usage from crashing if a malformed nested claim slips in.
+                        continue
 
         done = result.done or self._state.step_count >= MAX_STEPS
 

@@ -41,3 +41,40 @@ class TestAppRoutes:
         assert reset_response.status_code == 200
         assert step_response.status_code == 422
         assert state_response.status_code == 200
+
+    def test_step_rejects_malformed_conclusion_claims(self):
+        client = TestClient(_load_app(enable_web_interface=False))
+
+        reset_response = client.post(
+            "/reset",
+            json={"scenario_name": "perturbation_immune", "domain_randomise": False},
+        )
+        session_id = reset_response.json()["session_id"]
+
+        step_response = client.post(
+            "/step",
+            json={
+                "session_id": session_id,
+                "action": {
+                    "action_type": "synthesize_conclusion",
+                    "parameters": {
+                        "claims": [
+                            {
+                                "top_markers": ["STAT1"],
+                                "causal_mechanisms": [
+                                    {"mechanism": "JAK-STAT pathway inhibition"}
+                                ],
+                                "evidence_steps": [4, 5],
+                            }
+                        ]
+                    },
+                },
+            },
+        )
+
+        assert step_response.status_code == 422
+        detail = step_response.json()["detail"]
+        assert any(
+            item["loc"][:4] == ["action", "parameters", "claims", 0]
+            for item in detail
+        )
