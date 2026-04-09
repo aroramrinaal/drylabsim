@@ -136,9 +136,7 @@ class ResourceState(BaseModel):
 class FullLatentState(BaseModel):
     """Complete hidden state of the simulated biological world."""
 
-    biology: LatentBiologicalState = Field(
-        default_factory=LatentBiologicalState
-    )
+    biology: LatentBiologicalState = Field(default_factory=LatentBiologicalState)
     technical: TechnicalState = Field(default_factory=TechnicalState)
     progress: ExperimentProgress = Field(default_factory=ExperimentProgress)
     resources: ResourceState = Field(default_factory=ResourceState)
@@ -146,6 +144,10 @@ class FullLatentState(BaseModel):
     discovered_de_genes: List[str] = Field(default_factory=list)
     discovered_clusters: List[str] = Field(default_factory=list)
     discovered_clone_markers: Dict[str, List[str]] = Field(default_factory=dict)
+    validated_marker_pairs: List[str] = Field(
+        default_factory=list,
+        description="Validated (marker, subpopulation) pairs as 'marker::subpop_id' strings",
+    )
     task_modality: str = "scRNA-seq"
     scenario_name: str = ""
     scenario_difficulty: str = ""

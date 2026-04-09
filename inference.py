@@ -172,6 +172,10 @@ SYSTEM_PROMPT = textwrap.dedent(
       causal_mechanisms, predicted_pathways, and evidence_steps when available.
     - For clone-structured resistance tasks, include clonal_claims and
       clone_size_estimates when the observation supports them.
+    - Expert multiclone task: validate_marker CAN be called multiple times for
+      different markers or different subpopulations. Validate markers in at
+      least 2 distinct subpopulations before concluding. The conclusion must
+      contain at least 2 clonal_claims with distinct mechanisms.
     - Output JSON only. No markdown fences. No explanation.
     """
 ).strip()
@@ -261,9 +265,9 @@ def _infer_completeness_from_history(pipeline_history: List[dict]) -> float:
     core_score = sum(1 for step in CORE_MILESTONES if step in completed) / len(
         CORE_MILESTONES
     )
-    optional_score = sum(
-        1 for step in OPTIONAL_MILESTONES if step in completed
-    ) / len(OPTIONAL_MILESTONES)
+    optional_score = sum(1 for step in OPTIONAL_MILESTONES if step in completed) / len(
+        OPTIONAL_MILESTONES
+    )
     return 0.7 * core_score + 0.3 * optional_score
 
 
@@ -273,7 +277,9 @@ def _infer_biology_score(obs: dict) -> float:
     task_name = str((obs.get("metadata") or {}).get("task_name", ""))
     inferred_mechanisms = _mechanism_hypotheses(task_name, obs)
 
-    marker_score = min(1.0, len(discovered_markers) / 4.0) if discovered_markers else 0.0
+    marker_score = (
+        min(1.0, len(discovered_markers) / 4.0) if discovered_markers else 0.0
+    )
     mechanism_score = (
         min(1.0, len(inferred_mechanisms) / 2.0) if inferred_mechanisms else 0.0
     )
@@ -328,7 +334,9 @@ def grade_from_obs(obs: dict) -> float:
 def recommend_next_action(task_name: str, pipeline_history: List[dict]) -> str:
     counts = _completed_action_counts(pipeline_history)
     for action_name in TASK_PIPELINES[task_name]:
-        required_count = 2 if task_name == "expert" and action_name == "validate_marker" else 1
+        required_count = (
+            2 if task_name == "expert" and action_name == "validate_marker" else 1
+        )
         if counts.get(action_name, 0) < required_count:
             return action_name
     return "synthesize_conclusion"
@@ -475,7 +483,9 @@ def _fallback_clonal_claims(obs: dict) -> Tuple[List[Dict[str, Any]], Dict[str, 
     cluster_pathways = _cluster_pathway_map(all_outputs)
     cluster_sizes = _latest_cluster_sizes(obs)
 
-    cluster_ids = list(dict.fromkeys(list(cluster_markers.keys()) + list(cluster_pathways.keys())))
+    cluster_ids = list(
+        dict.fromkeys(list(cluster_markers.keys()) + list(cluster_pathways.keys()))
+    )
     clonal_claims: List[Dict[str, Any]] = []
     for cluster_id in cluster_ids:
         markers = cluster_markers.get(cluster_id, [])[:4]
@@ -620,9 +630,7 @@ def build_fallback_action(task_name: str, obs: dict, action_name: str) -> dict:
                     for marker in claim.get("markers", [])
                 ][:6]
             clonal_mechanisms = [
-                claim["mechanism"]
-                for claim in clonal_claims
-                if claim.get("mechanism")
+                claim["mechanism"] for claim in clonal_claims if claim.get("mechanism")
             ]
             mechanisms = list(dict.fromkeys(clonal_mechanisms + mechanisms))[:4]
         claim_type = "causal" if mechanisms else "correlational"
@@ -688,16 +696,16 @@ def build_user_prompt(
     return textwrap.dedent(
         f"""
         Task tier: {task_name}
-        Problem: {task.get('problem_statement', 'unknown')}
-        Tissue: {task.get('tissue', 'unknown')}
-        Conditions: {task.get('conditions', [])}
-        Available tools: {task.get('available_tools', [])}
-        Available assays: {task.get('available_assays', [])}
+        Problem: {task.get("problem_statement", "unknown")}
+        Tissue: {task.get("tissue", "unknown")}
+        Conditions: {task.get("conditions", [])}
+        Available tools: {task.get("available_tools", [])}
+        Available assays: {task.get("available_assays", [])}
 
-        Budget used: {resource_usage.get('budget_used', 0)}
-        Budget remaining: {resource_usage.get('budget_remaining', 0)}
-        Time used days: {resource_usage.get('time_used_days', 0)}
-        Time remaining days: {resource_usage.get('time_remaining_days', 0)}
+        Budget used: {resource_usage.get("budget_used", 0)}
+        Budget remaining: {resource_usage.get("budget_remaining", 0)}
+        Time used days: {resource_usage.get("time_used_days", 0)}
+        Time remaining days: {resource_usage.get("time_remaining_days", 0)}
 
         Recent pipeline history:
         {_recent_history_lines(pipeline_history)}

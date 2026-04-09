@@ -34,27 +34,27 @@ from .output_generator import OutputGenerator
 
 # Fallback costs per ActionType when the agent doesn't specify a known tool.
 _BASE_ACTION_COSTS: Dict[ActionType, Tuple[float, float]] = {
-    ActionType.COLLECT_SAMPLE:               (5_000,  7.0),
-    ActionType.SELECT_COHORT:                (  500,  1.0),
-    ActionType.PREPARE_LIBRARY:              (8_000,  3.0),
-    ActionType.CULTURE_CELLS:                (3_000, 14.0),
-    ActionType.PERTURB_GENE:                 (2_000,  3.0),
-    ActionType.PERTURB_COMPOUND:             (1_000,  2.0),
-    ActionType.SEQUENCE_CELLS:               (15_000, 5.0),
-    ActionType.RUN_QC:                       (  100,  0.5),
-    ActionType.FILTER_DATA:                  (   50,  0.25),
-    ActionType.NORMALIZE_DATA:               (   50,  0.25),
-    ActionType.INTEGRATE_BATCHES:            (  100,  0.5),
-    ActionType.CLUSTER_CELLS:                (  100,  0.5),
-    ActionType.DIFFERENTIAL_EXPRESSION:      (  100,  0.5),
-    ActionType.TRAJECTORY_ANALYSIS:          (  200,  1.0),
-    ActionType.PATHWAY_ENRICHMENT:           (  100,  0.5),
-    ActionType.REGULATORY_NETWORK_INFERENCE: (  300,  1.0),
-    ActionType.MARKER_SELECTION:             (  100,  0.5),
-    ActionType.VALIDATE_MARKER:              (5_000, 14.0),
-    ActionType.DESIGN_FOLLOWUP:              (  100,  0.5),
-    ActionType.REQUEST_SUBAGENT_REVIEW:      (   50,  0.25),
-    ActionType.SYNTHESIZE_CONCLUSION:        (    0,  0.5),
+    ActionType.COLLECT_SAMPLE: (5_000, 7.0),
+    ActionType.SELECT_COHORT: (500, 1.0),
+    ActionType.PREPARE_LIBRARY: (8_000, 3.0),
+    ActionType.CULTURE_CELLS: (3_000, 14.0),
+    ActionType.PERTURB_GENE: (2_000, 3.0),
+    ActionType.PERTURB_COMPOUND: (1_000, 2.0),
+    ActionType.SEQUENCE_CELLS: (15_000, 5.0),
+    ActionType.RUN_QC: (100, 0.5),
+    ActionType.FILTER_DATA: (50, 0.25),
+    ActionType.NORMALIZE_DATA: (50, 0.25),
+    ActionType.INTEGRATE_BATCHES: (100, 0.5),
+    ActionType.CLUSTER_CELLS: (100, 0.5),
+    ActionType.DIFFERENTIAL_EXPRESSION: (100, 0.5),
+    ActionType.TRAJECTORY_ANALYSIS: (200, 1.0),
+    ActionType.PATHWAY_ENRICHMENT: (100, 0.5),
+    ActionType.REGULATORY_NETWORK_INFERENCE: (300, 1.0),
+    ActionType.MARKER_SELECTION: (100, 0.5),
+    ActionType.VALIDATE_MARKER: (5_000, 14.0),
+    ActionType.DESIGN_FOLLOWUP: (100, 0.5),
+    ActionType.REQUEST_SUBAGENT_REVIEW: (50, 0.25),
+    ActionType.SYNTHESIZE_CONCLUSION: (0, 0.5),
 }
 
 # Kept as public alias so existing imports (e.g. drylabsim_environment) still work.
@@ -140,7 +140,9 @@ class TransitionEngine:
                 summary="Resources exhausted",
             )
             return TransitionResult(
-                next_state=s, output=output, done=True,
+                next_state=s,
+                output=output,
+                done=True,
                 hard_violations=["resources_exhausted"],
             )
 
@@ -172,17 +174,20 @@ class TransitionEngine:
         s.resources.budget_used += budget_cost
         s.resources.time_used_days += time_cost
         if action.action_type in {
-            ActionType.RUN_QC, ActionType.FILTER_DATA,
-            ActionType.NORMALIZE_DATA, ActionType.INTEGRATE_BATCHES,
-            ActionType.CLUSTER_CELLS, ActionType.DIFFERENTIAL_EXPRESSION,
-            ActionType.TRAJECTORY_ANALYSIS, ActionType.PATHWAY_ENRICHMENT,
-            ActionType.REGULATORY_NETWORK_INFERENCE, ActionType.MARKER_SELECTION,
+            ActionType.RUN_QC,
+            ActionType.FILTER_DATA,
+            ActionType.NORMALIZE_DATA,
+            ActionType.INTEGRATE_BATCHES,
+            ActionType.CLUSTER_CELLS,
+            ActionType.DIFFERENTIAL_EXPRESSION,
+            ActionType.TRAJECTORY_ANALYSIS,
+            ActionType.PATHWAY_ENRICHMENT,
+            ActionType.REGULATORY_NETWORK_INFERENCE,
+            ActionType.MARKER_SELECTION,
         }:
             s.resources.compute_hours_used += time_cost * 8
 
-    def _update_progress(
-        self, s: FullLatentState, action: ExperimentAction
-    ) -> None:
+    def _update_progress(self, s: FullLatentState, action: ExperimentAction) -> None:
         at = action.action_type
         p = s.progress
         _MAP = {
@@ -230,6 +235,13 @@ class TransitionEngine:
             base = p.n_cells_sequenced or s.biology.n_true_cells
             p.n_cells_after_filter = max(100, int(base * retain))
             s.last_retain_frac = retain
+
+        if at == ActionType.VALIDATE_MARKER:
+            marker = str(action.parameters.get("marker", "")).strip()
+            subpop = str(action.parameters.get("subpopulation_id", "")).strip()
+            pair_key = f"{marker}::{subpop}" if subpop else marker
+            if pair_key and pair_key not in s.validated_marker_pairs:
+                s.validated_marker_pairs.append(pair_key)
 
         if at == ActionType.CLUSTER_CELLS:
             n_true = len(s.biology.cell_populations) or 5

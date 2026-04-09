@@ -26,11 +26,16 @@ _REDUNDANT = {
     ActionType.PATHWAY_ENRICHMENT: "pathways_analyzed",
     ActionType.REGULATORY_NETWORK_INFERENCE: "networks_inferred",
     ActionType.MARKER_SELECTION: "markers_discovered",
-    ActionType.VALIDATE_MARKER: "markers_validated",
     ActionType.DESIGN_FOLLOWUP: "followup_designed",
     ActionType.REQUEST_SUBAGENT_REVIEW: "subagent_review_requested",
     ActionType.SYNTHESIZE_CONCLUSION: "conclusion_reached",
 }
+
+
+def _marker_pair_key(action: ExperimentAction) -> str:
+    marker = str(action.parameters.get("marker", "")).strip()
+    subpop = str(action.parameters.get("subpopulation_id", "")).strip()
+    return f"{marker}::{subpop}" if subpop else marker
 
 
 def check_redundancy(
@@ -49,4 +54,20 @@ def check_redundancy(
                 message=f"Step '{at.value}' already completed — redundant action blocked",
             )
         )
+
+    if at == ActionType.VALIDATE_MARKER and p.markers_validated:
+        pair_key = _marker_pair_key(action)
+        if pair_key in s.validated_marker_pairs:
+            vs.append(
+                RuleViolation(
+                    rule_id="redundant_validate_marker_pair",
+                    severity=Severity.HARD,
+                    message=(
+                        f"Marker '{action.parameters.get('marker', '')}' in "
+                        f"subpopulation '{action.parameters.get('subpopulation_id', '')}' "
+                        f"already validated — redundant action blocked"
+                    ),
+                )
+            )
+
     return vs

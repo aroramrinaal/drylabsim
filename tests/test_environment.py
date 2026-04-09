@@ -33,17 +33,21 @@ class TestEnvironmentLifecycle:
         env.reset()
 
         actions = [
-            ExperimentAction(action_type=ActionType.COLLECT_SAMPLE,
-                             parameters={"n_samples": 6}),
-            ExperimentAction(action_type=ActionType.PREPARE_LIBRARY,
-                             method="10x_chromium"),
+            ExperimentAction(
+                action_type=ActionType.COLLECT_SAMPLE, parameters={"n_samples": 6}
+            ),
+            ExperimentAction(
+                action_type=ActionType.PREPARE_LIBRARY, method="10x_chromium"
+            ),
             ExperimentAction(action_type=ActionType.SEQUENCE_CELLS),
             ExperimentAction(action_type=ActionType.RUN_QC),
             ExperimentAction(action_type=ActionType.FILTER_DATA),
             ExperimentAction(action_type=ActionType.NORMALIZE_DATA),
             ExperimentAction(action_type=ActionType.CLUSTER_CELLS),
-            ExperimentAction(action_type=ActionType.DIFFERENTIAL_EXPRESSION,
-                             parameters={"comparison": "disease_vs_healthy"}),
+            ExperimentAction(
+                action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+                parameters={"comparison": "disease_vs_healthy"},
+            ),
         ]
 
         for a in actions:
@@ -59,19 +63,23 @@ class TestEnvironmentLifecycle:
     def test_premature_de_blocked(self):
         env = BioExperimentEnvironment()
         env.reset()
-        obs = env.step(ExperimentAction(
-            action_type=ActionType.DIFFERENTIAL_EXPRESSION,
-        ))
+        obs = env.step(
+            ExperimentAction(
+                action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+            )
+        )
         assert obs.latest_output is not None
         assert obs.latest_output.success is False
 
     def test_premature_followup_design_is_flagged(self):
         env = BioExperimentEnvironment()
         env.reset()
-        obs = env.step(ExperimentAction(
-            action_type=ActionType.DESIGN_FOLLOWUP,
-            parameters={"assay": "qPCR"},
-        ))
+        obs = env.step(
+            ExperimentAction(
+                action_type=ActionType.DESIGN_FOLLOWUP,
+                parameters={"assay": "qPCR"},
+            )
+        )
         assert obs.latest_output is not None
         assert obs.latest_output.success is False
         assert any("follow-up design" in msg.lower() for msg in obs.rule_violations)
@@ -91,16 +99,23 @@ class TestEnvironmentLifecycle:
             ExperimentAction(action_type=ActionType.FILTER_DATA),
             ExperimentAction(action_type=ActionType.NORMALIZE_DATA),
             ExperimentAction(action_type=ActionType.CLUSTER_CELLS),
-            ExperimentAction(action_type=ActionType.DIFFERENTIAL_EXPRESSION,
-                             parameters={"comparison": "disease_vs_healthy"}),
+            ExperimentAction(
+                action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+                parameters={"comparison": "disease_vs_healthy"},
+            ),
             ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT),
             ExperimentAction(action_type=ActionType.MARKER_SELECTION),
             ExperimentAction(
                 action_type=ActionType.SYNTHESIZE_CONCLUSION,
-                parameters={"claims": [
-                    {"claim": "Test conclusion", "confidence": 0.7,
-                     "claim_type": "correlational"},
-                ]},
+                parameters={
+                    "claims": [
+                        {
+                            "claim": "Test conclusion",
+                            "confidence": 0.7,
+                            "claim_type": "correlational",
+                        },
+                    ]
+                },
             ),
         ]
         for a in quick_pipeline:
@@ -136,12 +151,16 @@ class TestEnvironmentLifecycle:
             assert obs.latest_output is not None
             assert obs.latest_output.success is True
 
-        obs = env.step(ExperimentAction(
-            action_type=ActionType.SYNTHESIZE_CONCLUSION,
-            parameters={"claims": [
-                {"claim": "Premature conclusion", "confidence": 0.9},
-            ]},
-        ))
+        obs = env.step(
+            ExperimentAction(
+                action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                parameters={
+                    "claims": [
+                        {"claim": "Premature conclusion", "confidence": 0.9},
+                    ]
+                },
+            )
+        )
 
         assert obs.latest_output is not None
         assert obs.latest_output.success is False
@@ -327,6 +346,110 @@ class TestEnvironmentLifecycle:
         assert obs.latest_output.success is False
         assert any("evidence_steps" in msg.lower() for msg in obs.rule_violations)
 
+    def test_expert_validate_marker_allows_second_subpopulation(self):
+        env = BioExperimentEnvironment(
+            scenario_name="venetoclax_resistance_multiclone",
+            domain_randomise=False,
+        )
+        env.reset()
+
+        pipeline = [
+            ExperimentAction(action_type=ActionType.COLLECT_SAMPLE),
+            ExperimentAction(action_type=ActionType.PREPARE_LIBRARY),
+            ExperimentAction(action_type=ActionType.SEQUENCE_CELLS),
+            ExperimentAction(action_type=ActionType.RUN_QC),
+            ExperimentAction(action_type=ActionType.FILTER_DATA),
+            ExperimentAction(action_type=ActionType.NORMALIZE_DATA),
+            ExperimentAction(action_type=ActionType.INTEGRATE_BATCHES),
+            ExperimentAction(action_type=ActionType.CLUSTER_CELLS),
+            ExperimentAction(
+                action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+                parameters={"comparison": "post_vs_pre_bulk"},
+            ),
+            ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT),
+            ExperimentAction(action_type=ActionType.MARKER_SELECTION),
+        ]
+        for action in pipeline:
+            obs = env.step(action)
+            assert obs.latest_output is not None
+            assert obs.latest_output.success is True
+
+        first_validation = ExperimentAction(
+            action_type=ActionType.VALIDATE_MARKER,
+            parameters={
+                "marker": "MCL1",
+                "subpopulation_id": "cluster_0",
+                "assay": "qPCR",
+            },
+        )
+        obs1 = env.step(first_validation)
+        assert obs1.latest_output is not None
+        assert obs1.latest_output.success is True
+
+        second_validation = ExperimentAction(
+            action_type=ActionType.VALIDATE_MARKER,
+            parameters={
+                "marker": "JAK2",
+                "subpopulation_id": "cluster_1",
+                "assay": "qPCR",
+            },
+        )
+        obs2 = env.step(second_validation)
+        assert obs2.latest_output is not None
+        assert obs2.latest_output.success is True
+
+    def test_expert_validate_marker_blocks_same_marker_same_subpop(self):
+        env = BioExperimentEnvironment(
+            scenario_name="venetoclax_resistance_multiclone",
+            domain_randomise=False,
+        )
+        env.reset()
+
+        pipeline = [
+            ExperimentAction(action_type=ActionType.COLLECT_SAMPLE),
+            ExperimentAction(action_type=ActionType.PREPARE_LIBRARY),
+            ExperimentAction(action_type=ActionType.SEQUENCE_CELLS),
+            ExperimentAction(action_type=ActionType.RUN_QC),
+            ExperimentAction(action_type=ActionType.FILTER_DATA),
+            ExperimentAction(action_type=ActionType.NORMALIZE_DATA),
+            ExperimentAction(action_type=ActionType.INTEGRATE_BATCHES),
+            ExperimentAction(action_type=ActionType.CLUSTER_CELLS),
+            ExperimentAction(
+                action_type=ActionType.DIFFERENTIAL_EXPRESSION,
+                parameters={"comparison": "post_vs_pre_bulk"},
+            ),
+            ExperimentAction(action_type=ActionType.PATHWAY_ENRICHMENT),
+            ExperimentAction(action_type=ActionType.MARKER_SELECTION),
+        ]
+        for action in pipeline:
+            obs = env.step(action)
+            assert obs.latest_output is not None
+            assert obs.latest_output.success is True
+
+        first_validation = ExperimentAction(
+            action_type=ActionType.VALIDATE_MARKER,
+            parameters={
+                "marker": "MCL1",
+                "subpopulation_id": "cluster_0",
+                "assay": "qPCR",
+            },
+        )
+        obs1 = env.step(first_validation)
+        assert obs1.latest_output.success is True
+
+        duplicate_validation = ExperimentAction(
+            action_type=ActionType.VALIDATE_MARKER,
+            parameters={
+                "marker": "MCL1",
+                "subpopulation_id": "cluster_0",
+                "assay": "qPCR",
+            },
+        )
+        obs2 = env.step(duplicate_validation)
+        assert obs2.latest_output is not None
+        assert obs2.latest_output.success is False
+        assert any("already validated" in msg.lower() for msg in obs2.rule_violations)
+
 
 class TestSessionBackedHttpAPI:
     def test_reset_returns_session_id_and_step_uses_it(self):
@@ -344,7 +467,10 @@ class TestSessionBackedHttpAPI:
                 "/step",
                 json={
                     "session_id": session_id,
-                    "action": {"action_type": "collect_sample", "parameters": {"n_samples": 6}},
+                    "action": {
+                        "action_type": "collect_sample",
+                        "parameters": {"n_samples": 6},
+                    },
                 },
             )
             assert step_resp.status_code == 200
@@ -365,7 +491,10 @@ class TestSessionBackedHttpAPI:
                 "/step",
                 json={
                     "session_id": session_a,
-                    "action": {"action_type": "collect_sample", "parameters": {"n_samples": 6}},
+                    "action": {
+                        "action_type": "collect_sample",
+                        "parameters": {"n_samples": 6},
+                    },
                 },
             )
             assert step_a.status_code == 200
