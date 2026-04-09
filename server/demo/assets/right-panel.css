@@ -24,8 +24,20 @@
   font-size: 11px; font-weight: 500; width: 80px;
   color: var(--text-dim); text-align: right;
 }
+.rw-label-wrap {
+  display: flex; align-items: center; gap: 6px; width: 80px; justify-content: flex-end;
+}
+.rw-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.rw-dot.validity  { background: #6366f1; }
+.rw-dot.ordering  { background: #06b6d4; }
+.rw-dot.info_gain { background: #f97316; }
+.rw-dot.efficiency{ background: #10b981; }
+.rw-dot.novelty   { background: #ec4899; }
+.rw-dot.penalty   { background: #ef4444; }
 .rw-track {
-  flex: 1; height: 18px;
+  flex: 1; height: 20px;
   background: rgba(255,255,255,0.03);
   border-radius: 4px; overflow: hidden; position: relative;
 }
@@ -35,14 +47,14 @@
   display: flex; align-items: center; justify-content: flex-end;
   padding-right: 6px; font-size: 10px; font-weight: 600;
   font-family: 'JetBrains Mono', monospace;
-  color: rgba(255,255,255,0.85); min-width: fit-content;
+  color: rgba(255,255,255,0.9); min-width: fit-content;
 }
-.rw-fill.validity { background: linear-gradient(90deg, rgba(52,211,153,0.5), rgba(52,211,153,0.85)); }
-.rw-fill.ordering { background: linear-gradient(90deg, rgba(34,211,238,0.5), rgba(34,211,238,0.85)); }
-.rw-fill.info_gain { background: linear-gradient(90deg, rgba(56,189,248,0.5), rgba(56,189,248,0.85)); }
-.rw-fill.efficiency { background: linear-gradient(90deg, rgba(251,191,36,0.5), rgba(251,191,36,0.85)); }
-.rw-fill.novelty { background: linear-gradient(90deg, rgba(167,139,250,0.5), rgba(167,139,250,0.85)); }
-.rw-fill.penalty { background: linear-gradient(90deg, rgba(248,113,113,0.5), rgba(248,113,113,0.85)); }
+.rw-fill.validity  { background: linear-gradient(90deg, rgba(99,102,241,0.45),  rgba(99,102,241,0.92)); }
+.rw-fill.ordering  { background: linear-gradient(90deg, rgba(6,182,212,0.45),   rgba(6,182,212,0.92)); }
+.rw-fill.info_gain { background: linear-gradient(90deg, rgba(249,115,22,0.45),  rgba(249,115,22,0.92)); }
+.rw-fill.efficiency{ background: linear-gradient(90deg, rgba(16,185,129,0.45),  rgba(16,185,129,0.92)); }
+.rw-fill.novelty   { background: linear-gradient(90deg, rgba(236,72,153,0.45),  rgba(236,72,153,0.92)); }
+.rw-fill.penalty   { background: linear-gradient(90deg, rgba(239,68,68,0.45),   rgba(239,68,68,0.92)); }
 .cumulative-row {
   display: flex; align-items: baseline; justify-content: space-between;
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);

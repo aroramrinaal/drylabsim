@@ -38,26 +38,29 @@
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Environment State</div>
-      <div class="gauge">
-        <div class="gauge-header">
-          <span class="gauge-label">Budget</span>
-          <span class="gauge-value" id="budgetVal">$100,000</span>
+      <div class="env-stat">
+        <div class="env-stat-header">
+          <span class="env-stat-icon">◈</span>
+          <span class="env-stat-label">Budget</span>
+          <span class="env-stat-value" id="budgetVal">$100,000</span>
         </div>
-        <div class="gauge-track"><div class="gauge-fill" id="budgetFill" style="width:100%;background:var(--green);"></div></div>
+        <div class="env-stat-track"><div class="env-stat-fill" id="budgetFill" style="width:100%;background:var(--green);"></div></div>
       </div>
-      <div class="gauge">
-        <div class="gauge-header">
-          <span class="gauge-label">Time</span>
-          <span class="gauge-value" id="timeVal">180 / 180 days</span>
+      <div class="env-stat">
+        <div class="env-stat-header">
+          <span class="env-stat-icon">◷</span>
+          <span class="env-stat-label">Time</span>
+          <span class="env-stat-value" id="timeVal">180 / 180 days</span>
         </div>
-        <div class="gauge-track"><div class="gauge-fill" id="timeFill" style="width:100%;background:var(--cyan);"></div></div>
+        <div class="env-stat-track"><div class="env-stat-fill" id="timeFill" style="width:100%;background:var(--cyan);"></div></div>
       </div>
-      <div class="gauge">
-        <div class="gauge-header">
-          <span class="gauge-label">Steps</span>
-          <span class="gauge-value" id="stepVal">0 / 30</span>
+      <div class="env-stat">
+        <div class="env-stat-header">
+          <span class="env-stat-icon">▸▸</span>
+          <span class="env-stat-label">Steps</span>
+          <span class="env-stat-value" id="stepVal">0 / 30</span>
         </div>
-        <div class="gauge-track"><div class="gauge-fill" id="stepFill" style="width:0%;background:var(--accent);"></div></div>
+        <div class="env-stat-track"><div class="env-stat-fill" id="stepFill" style="width:0%;background:var(--accent);"></div></div>
       </div>
     </div>
     <div class="sidebar-section">
@@ -87,12 +90,12 @@
           <span id="stepRewardLabel" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);">--</span>
         </div>
         <div id="rewardBars">
-          <div class="reward-row"><span class="rw-label">Validity</span><div class="rw-track"><div class="rw-fill validity" id="rw-validity"></div></div></div>
-          <div class="reward-row"><span class="rw-label">Ordering</span><div class="rw-track"><div class="rw-fill ordering" id="rw-ordering"></div></div></div>
-          <div class="reward-row"><span class="rw-label">Info Gain</span><div class="rw-track"><div class="rw-fill info_gain" id="rw-info_gain"></div></div></div>
-          <div class="reward-row"><span class="rw-label">Efficiency</span><div class="rw-track"><div class="rw-fill efficiency" id="rw-efficiency"></div></div></div>
-          <div class="reward-row"><span class="rw-label">Novelty</span><div class="rw-track"><div class="rw-fill novelty" id="rw-novelty"></div></div></div>
-          <div class="reward-row"><span class="rw-label">Penalty</span><div class="rw-track"><div class="rw-fill penalty" id="rw-penalty"></div></div></div>
+          <div class="reward-row"><span class="rw-label"><span class="rw-dot validity"></span>Validity</span><div class="rw-track"><div class="rw-fill validity" id="rw-validity"></div></div></div>
+          <div class="reward-row"><span class="rw-label"><span class="rw-dot ordering"></span>Ordering</span><div class="rw-track"><div class="rw-fill ordering" id="rw-ordering"></div></div></div>
+          <div class="reward-row"><span class="rw-label"><span class="rw-dot info_gain"></span>Info Gain</span><div class="rw-track"><div class="rw-fill info_gain" id="rw-info_gain"></div></div></div>
+          <div class="reward-row"><span class="rw-label"><span class="rw-dot efficiency"></span>Efficiency</span><div class="rw-track"><div class="rw-fill efficiency" id="rw-efficiency"></div></div></div>
+          <div class="reward-row"><span class="rw-label"><span class="rw-dot novelty"></span>Novelty</span><div class="rw-track"><div class="rw-fill novelty" id="rw-novelty"></div></div></div>
+          <div class="reward-row"><span class="rw-label"><span class="rw-dot penalty"></span>Penalty</span><div class="rw-track"><div class="rw-fill penalty" id="rw-penalty"></div></div></div>
         </div>
         <div class="cumulative-row">
           <span class="cum-label">Cumulative Reward</span>
@@ -141,10 +144,11 @@
       </div>
     </div>
     <div class="center-header">
-      <div class="tab active">Agent Log</div>
-      <div class="tab">Raw JSON</div>
+      <div class="tab active" id="tabLog" onclick="switchTab('log')">Agent Log</div>
+      <div class="tab" id="tabJson" onclick="switchTab('json')">Raw JSON</div>
     </div>
     <div class="terminal" id="terminal"></div>
+    <div class="raw-json-view" id="rawJsonView"></div>
   </div>
 
   <!-- Right: Virtual Lab -->
@@ -291,13 +295,24 @@ function drawLab() {
   ctx.fillStyle = FLOOR_COLOR;
   ctx.fillRect(0, 0, labW, labH);
 
-  // Floor — checkerboard tiles
-  const tileSize = 24;
-  for (let ty = 0; ty < labH; ty += tileSize) {
-    for (let tx = 0; tx < labW; tx += tileSize) {
-      const even = ((Math.floor(tx/tileSize) + Math.floor(ty/tileSize)) % 2 === 0);
-      ctx.fillStyle = even ? FLOOR_TILE_A : FLOOR_TILE_B;
-      ctx.fillRect(tx, ty, tileSize, tileSize);
+  // Floor — hex grid
+  const hexR = 22;
+  const hW = hexR * 2, hH = Math.sqrt(3) * hexR;
+  for (let col = -1; col < labW / (hW * 0.75) + 2; col++) {
+    for (let row = -1; row < labH / hH + 2; row++) {
+      const hx = col * hW * 0.75;
+      const hy = row * hH + (col % 2 === 0 ? 0 : hH * 0.5);
+      // Vary opacity slightly per cell for depth
+      const cellPhase = Math.sin(col * 1.7 + row * 2.3) * 0.01;
+      ctx.strokeStyle = `rgba(56,189,248,${(0.028 + cellPhase).toFixed(3)})`;
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (i * Math.PI) / 3;
+        const px = hx + hexR * Math.cos(angle), py = hy + hexR * Math.sin(angle);
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.stroke();
     }
   }
 
@@ -428,7 +443,7 @@ function drawLab() {
     agent.facing = dx > 0 ? 1 : dx < -0.5 ? -1 : agent.facing;
   }
 
-  drawPerson(agent.x, agent.y, isWalking, agent.working, agent.facing || 1);
+  drawAgent(agent.x, agent.y, isWalking, agent.working);
 
   // Particles
   for (let i = particlesLab.length - 1; i >= 0; i--) {
@@ -460,98 +475,98 @@ function drawLab() {
   requestAnimationFrame(drawLab);
 }
 
-// ---- Draw person (lab coat researcher) ----
-function drawPerson(x, y, walking, working, facing) {
-  const f = facing;
+// ---- Draw agent: glowing sample tube ----
+function drawAgent(x, y, moving, working) {
   const t = frameCount;
-  const walkCycle = walking ? Math.sin(t * 0.15) : 0;
-  const bobY = walking ? Math.abs(Math.sin(t * 0.15)) * 2 : 0;
-  const workArm = working ? Math.sin(t * 0.08) * 0.3 : 0;
-  const py = y - bobY;
+  const bob = moving ? Math.sin(t * 0.18) * 2.5 : (working ? Math.sin(t * 0.06) * 1 : 0);
+  const sc = activeStationKey && STATIONS[activeStationKey] ? STATIONS[activeStationKey].color : '#38bdf8';
+  const {r, g, b} = hexToRgb(sc);
+  const glowAmt = working ? 0.55 + 0.22 * Math.sin(t * 0.1) : (moving ? 0.28 : 0.22);
 
   ctx.save();
-  ctx.translate(x, py);
+  ctx.translate(x, y - 10 + bob);
 
-  // Ground shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  // Ground shadow (ellipse)
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath(); ctx.ellipse(0, 20, 10, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Ambient glow halo
+  const halo = ctx.createRadialGradient(0, 0, 1, 0, 0, 24);
+  halo.addColorStop(0, `rgba(${r},${g},${b},${(glowAmt * 0.45).toFixed(3)})`);
+  halo.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = halo;
+  ctx.fillRect(-24, -26, 48, 50);
+
+  // Outer tube body (rounded bottom)
   ctx.beginPath();
-  ctx.ellipse(0, 13, 11, 4, 0, 0, Math.PI * 2);
+  ctx.moveTo(-6, -20); ctx.lineTo(-6, 14);
+  ctx.quadraticCurveTo(-6, 20, 0, 20);
+  ctx.quadraticCurveTo( 6, 20, 6, 14);
+  ctx.lineTo(6, -20);
+  ctx.closePath();
+  ctx.fillStyle = '#141e30';
   ctx.fill();
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.45)`;
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
 
-  // Legs
-  const legSpread = walking ? walkCycle * 5 : 0;
-  ctx.strokeStyle = '#1e3a5f';
-  ctx.lineWidth = 3;
-  ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-3, 4); ctx.lineTo(-3 + legSpread, 12); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo( 3, 4); ctx.lineTo( 3 - legSpread, 12); ctx.stroke();
-  ctx.fillStyle = '#1e293b';
-  ctx.beginPath(); ctx.arc(-3 + legSpread, 12, 2.5, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc( 3 - legSpread, 12, 2.5, 0, Math.PI*2); ctx.fill();
-
-  // Body — lab coat
-  ctx.fillStyle = '#e2e8f0';
+  // Liquid fill (clipped to tube interior)
+  ctx.save();
   ctx.beginPath();
-  ctx.moveTo(-7, -4);
-  ctx.lineTo(-6,  6);
-  ctx.lineTo( 6,  6);
-  ctx.lineTo( 7, -4);
-  ctx.quadraticCurveTo( 7, -10, 0, -10);
-  ctx.quadraticCurveTo(-7, -10,-7,  -4);
+  ctx.moveTo(-5, -19); ctx.lineTo(-5, 14);
+  ctx.quadraticCurveTo(-5, 19, 0, 19);
+  ctx.quadraticCurveTo( 5, 19, 5, 14);
+  ctx.lineTo(5, -19);
+  ctx.closePath();
+  ctx.clip();
+
+  const liquidTop = working ? 0 + Math.sin(t * 0.12) * 1.5 : 3;
+  const liqGrd = ctx.createLinearGradient(0, liquidTop, 0, 19);
+  liqGrd.addColorStop(0, `rgba(${r},${g},${b},0.88)`);
+  liqGrd.addColorStop(1, `rgba(${r},${g},${b},0.38)`);
+  ctx.fillStyle = liqGrd;
+  ctx.fillRect(-5, liquidTop, 10, 24);
+
+  // Bubbles while working
+  if (working) {
+    for (let bi = 0; bi < 3; bi++) {
+      const bx2 = (bi % 2 === 0 ? -1.5 : 1.5);
+      const by2 = liquidTop + 14 - ((t * 0.55 + bi * 7) % 15);
+      ctx.fillStyle = `rgba(255,255,255,0.35)`;
+      ctx.beginPath(); ctx.arc(bx2, by2, 1.1, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  // Meniscus (liquid surface)
+  ctx.fillStyle = `rgba(${r},${g},${b},0.95)`;
+  ctx.beginPath(); ctx.ellipse(0, working ? Math.sin(t*0.12)*1.5 : 3, 5, 1.8, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Tube top rim
+  ctx.fillStyle = '#1e2d42';
+  ctx.beginPath(); ctx.ellipse(0, -20, 6.5, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#334155'; ctx.lineWidth = 0.5; ctx.stroke();
+
+  // Colored cap / stopper
+  ctx.fillStyle = sc;
+  ctx.globalAlpha = working ? 0.85 + 0.15 * Math.sin(t * 0.12) : 0.7;
+  ctx.beginPath();
+  ctx.moveTo(-4.5, -20);
+  ctx.quadraticCurveTo(-5,   -27, 0, -27);
+  ctx.quadraticCurveTo( 5,   -27, 4.5, -20);
+  ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 0.5; ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(0, 1); ctx.lineTo(0, 6);
-  ctx.strokeStyle = '#cbd5e1'; ctx.stroke();
-  ctx.strokeStyle = '#94a3b8';
-  ctx.strokeRect(f > 0 ? 1 : -5, -1, 4, 3);
+  ctx.globalAlpha = 1;
 
-  // Arms
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 3.5;
-  ctx.lineCap = 'round';
-  const backArmSwing = walking ? -walkCycle * 4 : 0;
-  ctx.beginPath(); ctx.moveTo(-f*6, -6); ctx.lineTo(-f*6 + backArmSwing, 2); ctx.stroke();
-  if (working) {
-    ctx.beginPath(); ctx.moveTo(f*6, -6); ctx.lineTo(f*10 + workArm*5, -8 + workArm*3); ctx.stroke();
-    ctx.fillStyle = '#fde68a';
-    ctx.beginPath(); ctx.arc(f*10 + workArm*5, -8 + workArm*3, 2, 0, Math.PI*2); ctx.fill();
-  } else {
-    const frontArmSwing = walking ? walkCycle * 4 : 0;
-    ctx.beginPath(); ctx.moveTo(f*6, -6); ctx.lineTo(f*6 + frontArmSwing, 2); ctx.stroke();
-  }
-  ctx.fillStyle = '#fde68a';
-  ctx.beginPath(); ctx.arc(-f*6 + backArmSwing, 2, 1.8, 0, Math.PI*2); ctx.fill();
-  if (!working) {
-    const fs = walking ? walkCycle * 4 : 0;
-    ctx.beginPath(); ctx.arc(f*6 + fs, 2, 1.8, 0, Math.PI*2); ctx.fill();
-  }
+  // Label band (white stripe mid-tube)
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.fillRect(-5, -8, 10, 3.5);
 
-  // Head
-  ctx.fillStyle = '#fde68a';
-  ctx.beginPath(); ctx.arc(0, -15, 7, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#1e293b';
-  ctx.beginPath(); ctx.arc(0, -17, 7, Math.PI, 0); ctx.fill();
-  // Eyes
-  ctx.fillStyle = '#1e293b';
-  ctx.beginPath(); ctx.arc( f*2.5, -15.5, 1,   0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(-f*1.5, -15.5, 1,   0, Math.PI*2); ctx.fill();
-  // Glasses
-  ctx.strokeStyle = '#475569'; ctx.lineWidth = 0.7;
-  ctx.beginPath(); ctx.arc( f*2.5, -15.5, 2.5, 0, Math.PI*2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(-f*1.5, -15.5, 2.5, 0, Math.PI*2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(f*0.5, -15.5); ctx.lineTo(-f*0.5, -15.5); ctx.stroke();
-  // Mouth
-  if (working) {
-    ctx.fillStyle = '#1e293b';
-    ctx.beginPath(); ctx.arc(f*0.5, -12.5, 1, 0, Math.PI); ctx.fill();
-  }
-  // ID Badge
-  ctx.fillStyle = '#38bdf8';
-  ctx.fillRect(f > 0 ? -6 : 2, -3, 4, 5);
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 3px Inter, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('AI', f > 0 ? -4 : 4, 0.5);
+  // Glass shine (left edge highlight)
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.moveTo(-5, -18); ctx.lineTo(-4, -18); ctx.lineTo(-4, 16); ctx.lineTo(-5, 14); ctx.closePath();
+  ctx.fill();
 
   ctx.restore();
 }
@@ -1464,6 +1479,20 @@ async function runStep(i, myId) {
   document.getElementById('cumReward').textContent = cumReward.toFixed(2);
   addRewardHistory(step, i);
 
+  // Track last step data for Raw JSON tab
+  lastStepJson = {
+    step: i + 1,
+    action: step.action,
+    params: step.params,
+    category: step.category,
+    budget: step.budget,
+    time: step.time,
+    reward: step.reward,
+    total_reward: step.total,
+    cumulative_reward: +cumReward.toFixed(4),
+  };
+  if (currentTab === 'json') refreshJsonView();
+
   const rewardStr = step.total >= 0
     ? '<span class="t-ok">+' + step.total.toFixed(2) + '</span>'
     : '<span class="t-err">' + step.total.toFixed(2) + '</span>';
@@ -1500,6 +1529,61 @@ function resetDemo() {
   labActionLabel.classList.remove('visible');
   initAgent();
   addLine(DEMO_COPY.resetLine);
+}
+
+// =====================================================
+// RAW JSON TAB
+// =====================================================
+let currentTab = 'log';
+let lastStepJson = null;
+
+function switchTab(tab) {
+  currentTab = tab;
+  const tabLog = document.getElementById('tabLog');
+  const tabJson = document.getElementById('tabJson');
+  const terminal = document.getElementById('terminal');
+  const rjv = document.getElementById('rawJsonView');
+  tabLog.className = 'tab' + (tab === 'log' ? ' active' : '');
+  tabJson.className = 'tab' + (tab === 'json' ? ' active' : '');
+  terminal.style.display = tab === 'log' ? '' : 'none';
+  rjv.style.display = tab === 'json' ? 'flex' : 'none';
+  rjv.style.flexDirection = 'column';
+  if (tab === 'json') refreshJsonView();
+}
+
+function refreshJsonView() {
+  const rjv = document.getElementById('rawJsonView');
+  if (!lastStepJson) {
+    rjv.innerHTML = '<div class="rjv-empty">No step data yet — run an episode to populate.</div>';
+    return;
+  }
+  const { step, action, params, category, budget, time, reward, total_reward, cumulative_reward } = lastStepJson;
+  const rewardBlock = syntaxHighlightJson(JSON.stringify(reward, null, 2));
+  const metaBlock = syntaxHighlightJson(JSON.stringify({ step, action, params, category, budget, time, total_reward, cumulative_reward }, null, 2));
+  rjv.innerHTML = `
+    <div class="rjv-header">
+      <span class="rjv-title">Step Payload</span>
+      <span class="rjv-step-badge">step ${step}</span>
+    </div>
+    <div class="rjv-block">
+      <div class="rjv-block-label">Action &amp; Context</div>
+      <div class="rjv-code">${metaBlock}</div>
+    </div>
+    <div class="rjv-block">
+      <div class="rjv-block-label">Reward Breakdown</div>
+      <div class="rjv-code">${rewardBlock}</div>
+    </div>`;
+}
+
+function syntaxHighlightJson(json) {
+  return json
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"([^"]+)"(?=\s*:)/g, '<span class="rjv-key">"$1"</span>')
+    .replace(/:\s*"([^"]*)"/g, ': <span class="rjv-str">"$1"</span>')
+    .replace(/:\s*(-?\d+\.?\d*)/g, ': <span class="rjv-num">$1</span>')
+    .replace(/:\s*(true|false)/g, ': <span class="rjv-bool">$1</span>')
+    .replace(/:\s*(null)/g, ': <span class="rjv-null">$1</span>')
+    .replace(/([{}\[\],])/g, '<span class="rjv-punct">$1</span>');
 }
 
 // Init
