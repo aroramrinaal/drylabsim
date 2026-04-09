@@ -740,6 +740,61 @@ def _extract_json_object(text: str) -> Optional[str]:
     return text if text.startswith("{") else None
 
 
+def _extract_mechanism_text(value: Any) -> Optional[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, dict):
+        for key in ("mechanism", "name", "description", "claim"):
+            nested = value.get(key)
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+    return None
+
+
+def _sanitize_action(action: dict) -> dict:
+    if action.get("action_type") != "synthesize_conclusion":
+        return action
+
+    parameters = action.get("parameters")
+    if not isinstance(parameters, dict):
+        action["parameters"] = {}
+        return action
+
+    claims = parameters.get("claims")
+    if not isinstance(claims, list):
+        parameters["claims"] = []
+        return action
+
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+
+        raw_mechanisms = claim.get("causal_mechanisms", [])
+        if isinstance(raw_mechanisms, list):
+            claim["causal_mechanisms"] = [
+                mechanism
+                for mechanism in (
+                    _extract_mechanism_text(item) for item in raw_mechanisms
+                )
+                if mechanism is not None
+            ]
+
+        raw_clonal_claims = claim.get("clonal_claims", [])
+        if not isinstance(raw_clonal_claims, list):
+            continue
+        for nested in raw_clonal_claims:
+            if not isinstance(nested, dict) or "mechanism" not in nested:
+                continue
+            mechanism = _extract_mechanism_text(nested.get("mechanism"))
+            if mechanism is None:
+                nested.pop("mechanism", None)
+                continue
+            nested["mechanism"] = mechanism
+
+    return action
+
+
 def choose_action(
     client: OpenAI,
     task_name: str,
@@ -781,7 +836,7 @@ def choose_action(
             "parameters": parsed.get("parameters", {}),
             "confidence": parsed.get("confidence", 0.7),
         }
-        return candidate
+        return _sanitize_action(candidate)
     except Exception as exc:
         print(
             f"[DEBUG] model action selection failed for task={task_name} "

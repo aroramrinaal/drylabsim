@@ -1,4 +1,9 @@
-from inference import _mechanism_hypotheses, build_fallback_action, recommend_next_action
+from inference import (
+    _mechanism_hypotheses,
+    _sanitize_action,
+    build_fallback_action,
+    recommend_next_action,
+)
 
 
 class TestInferenceMechanismRecovery:
@@ -145,3 +150,33 @@ class TestInferenceMechanismRecovery:
 
         assert action["parameters"]["marker"] == "JAK2"
         assert action["parameters"]["subpopulation_id"] == "cluster_2"
+
+    def test_sanitize_action_normalizes_nested_mechanism_objects(self):
+        action = {
+            "action_type": "synthesize_conclusion",
+            "parameters": {
+                "claims": [
+                    {
+                        "causal_mechanisms": [
+                            {"mechanism": "JAK-STAT pathway inhibition"},
+                            {"description": "Interferon signaling remodeling"},
+                            "Validated mechanism",
+                        ],
+                        "clonal_claims": [
+                            {"mechanism": {"name": "Clone-specific survival program"}},
+                            {"mechanism": {"unexpected": "shape"}},
+                        ],
+                    }
+                ]
+            },
+        }
+
+        sanitized = _sanitize_action(action)
+        claim = sanitized["parameters"]["claims"][0]
+        assert claim["causal_mechanisms"] == [
+            "JAK-STAT pathway inhibition",
+            "Interferon signaling remodeling",
+            "Validated mechanism",
+        ]
+        assert claim["clonal_claims"][0]["mechanism"] == "Clone-specific survival program"
+        assert "mechanism" not in claim["clonal_claims"][1]

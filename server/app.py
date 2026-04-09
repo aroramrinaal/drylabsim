@@ -20,11 +20,16 @@ except Exception as e:  # pragma: no cover
     ) from e
 
 try:
-    from ..models import ExperimentAction, ExperimentObservation
+    from ..models import (
+        ActionType,
+        ConclusionClaim,
+        ExperimentAction,
+        ExperimentObservation,
+    )
     from .demo_ui import register_demo_ui
     from .drylabsim_environment import BioExperimentEnvironment
 except ImportError:  # pragma: no cover - direct module import path
-    from models import ExperimentAction, ExperimentObservation
+    from models import ActionType, ConclusionClaim, ExperimentAction, ExperimentObservation
     from server.demo_ui import register_demo_ui
     from server.drylabsim_environment import BioExperimentEnvironment
 
@@ -87,6 +92,59 @@ def _serialize_observation(observation: ExperimentObservation) -> Dict[str, Any]
 
 def _session_error(status_code: int, detail: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail=detail)
+
+
+def _validate_conclusion_claims(action: ExperimentAction) -> None:
+    if action.action_type != ActionType.SYNTHESIZE_CONCLUSION:
+        return
+
+    raw_claims = action.parameters.get("claims", [])
+    if not isinstance(raw_claims, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                {
+                    "loc": ["action", "parameters", "claims"],
+                    "msg": "Input should be a valid list",
+                    "type": "list_type",
+                }
+            ],
+        )
+
+    claim_errors = []
+    for index, claim in enumerate(raw_claims):
+        if not isinstance(claim, dict):
+            claim_errors.append(
+                {
+                    "loc": ["action", "parameters", "claims", index],
+                    "msg": "Input should be a valid dictionary",
+                    "type": "dict_type",
+                }
+            )
+            continue
+
+        try:
+            ConclusionClaim.model_validate(claim)
+        except ValidationError as exc:
+            for error in exc.errors():
+                claim_errors.append(
+                    {
+                        **error,
+                        "loc": [
+                            "action",
+                            "parameters",
+                            "claims",
+                            index,
+                            *error.get("loc", ()),
+                        ],
+                    }
+                )
+
+    if claim_errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=claim_errors,
+        )
 
 
 app = create_app(
@@ -202,6 +260,7 @@ async def step(request: SessionStepRequest) -> Dict[str, Any]:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=exc.errors(),
         ) from exc
+    _validate_conclusion_claims(action)
 
     async with record.lock:
         observation = record.env.step(action)

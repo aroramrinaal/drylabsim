@@ -234,6 +234,34 @@ class TestMetaActionTiming:
         soft = engine.soft_violations(violations)
         assert any("validating at least one marker" in m.lower() for m in soft)
 
+    def test_malformed_mechanism_payload_does_not_crash_rule_engine(self):
+        engine = RuleEngine()
+        s = _state(
+            data_normalized=True,
+            cells_clustered=True,
+            de_performed=True,
+            markers_discovered=True,
+            pathways_analyzed=True,
+        )
+        s.scenario_name = "perturbation_immune"
+        violations = engine.check(
+            ExperimentAction(
+                action_type=ActionType.SYNTHESIZE_CONCLUSION,
+                parameters={
+                    "claims": [
+                        {
+                            "top_markers": ["STAT1"],
+                            "causal_mechanisms": [{"unexpected": "shape"}],
+                            "evidence_steps": [4, 5],
+                        }
+                    ]
+                },
+            ),
+            s,
+        )
+        hard = engine.hard_violations(violations)
+        assert any("causal mechanism" in m.lower() for m in hard)
+
     def test_expert_single_clone_conclusion_is_hard_blocked(self):
         engine = RuleEngine()
         s = _state(
