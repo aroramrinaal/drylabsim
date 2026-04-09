@@ -34,6 +34,9 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .topbar-subtitle {
   font-size: 10px;
