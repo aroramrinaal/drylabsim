@@ -38,10 +38,10 @@ DryLabSim currently ships with four benchmark tasks:
 
 | task | difficulty | tissue | focus |
 |---|---|---|---|
-| `cardiac_disease_de` | easy | heart | recover differential expression and validate markers in dilated cardiomyopathy |
-| `hematopoiesis_trajectory` | medium | bone marrow | reconstruct branching hematopoietic trajectories and regulatory drivers |
-| `perturbation_immune` | hard | synovial fluid | explain how JAK inhibition shifts immune cell state in rheumatoid arthritis |
-| `venetoclax_resistance_multiclone` | expert | bone marrow | disentangle parallel AML resistance mechanisms across multiple post-treatment subclones |
+| Cardiac Disease Differential Expression Profiling | easy | heart | recover differential expression and validate markers in dilated cardiomyopathy |
+| Hematopoietic Lineage Trajectory Reconstruction | medium | bone marrow | reconstruct branching hematopoietic trajectories and regulatory drivers |
+| Immune Cell Perturbation Response Analysis | hard | synovial fluid | explain how JAK inhibition shifts immune cell state in rheumatoid arthritis |
+| Multiclone Venetoclax Resistance Mechanism Dissection | expert | bone marrow | disentangle parallel AML resistance mechanisms across multiple post-treatment subclones |
 
 Why these tasks are interesting:
 - they cover differential expression, trajectory inference, perturbation analysis, and multiclone resistance reasoning
